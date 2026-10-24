@@ -3,7 +3,7 @@ local RS = game:GetService("ReplicatedStorage")
 local UIS = game:GetService("UserInputService") 
 local LP = Players.LocalPlayer 
 local HttpService = game:GetService("HttpService")
-local TweenService = game:GetService("TweenService") -- [NOVO] Para animações
+local TweenService = game:GetService("TweenService") 
 
 local Remotes = RS:WaitForChild("ReplicatedStorage Package"):WaitForChild("Remote Events") 
 local SendPacket = Remotes.SendPacket 
@@ -20,13 +20,7 @@ local function SaveConfig() if writefile then pcall(function() writefile(CONFIG_
 local function LoadConfig() if isfile and isfile(CONFIG_FILE) then local success, data = pcall(function() return HttpService:JSONDecode(readfile(CONFIG_FILE)) end) if success and data then for k, v in pairs(data) do if type(v) == "table" and Config[k] then for k2, v2 in pairs(v) do Config[k][k2] = v2 end else Config[k] = v end end end end end
 LoadConfig()
 
-local State = { 
-	lastBypass = 0, auraThread = nil, 
-	dragging = false, dragStart = nil, dragOrigin = nil, 
-	visible = true, gui = nil, 
-	isLocked = false, isMinimized = false,
-	isAnimating = false -- [NOVO] Bloqueia cliques durante animações
-} 
+local State = { lastBypass = 0, auraThread = nil, dragging = false, dragStart = nil, dragOrigin = nil, visible = true, gui = nil, isLocked = false, isMinimized = false, isAnimating = false } 
 
 local FriendsCache = {}
 local FriendListFrameRefs = {} 
@@ -87,20 +81,31 @@ local function sa()
 	task.spawn(function() while true do if Config.MiniAura.enabled then local targets = collectTargets(Config.MiniAura.range) if #targets > 0 then local target = targets[math.random(#targets)] if target and target.Parent then pcall(sp, target, Config.MiniAura.abilityId) end end task.wait(Config.MiniAura.interval) else task.wait(0.2) end end end) 
 end 
 
+-- ==========================================
+-- INTERFACE PREMIUM (MONOCROMÁTICA)
+-- ==========================================
 local function bui() 
 	local pg = LP:WaitForChild("PlayerGui") 
 	local old = pg:FindFirstChild("AbilityWarsUI") if old then old:Destroy() end 
+	
 	local sg = Instance.new("ScreenGui") 
 	sg.Name = "AbilityWarsUI" sg.ResetOnSpawn = false sg.IgnoreGuiInset = true sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling sg.DisplayOrder = 100 sg.Parent = pg 
 	State.gui = sg 
 	
+	-- Cores Estritas (Preto, Branco e Cinza)
+	local ColorBackground = Color3.fromRGB(10, 10, 10) -- Quase preto
+	local ColorPanel = Color3.fromRGB(25, 25, 25) -- Cinza muito escuro
+	local ColorText = Color3.fromRGB(245, 245, 245) -- Branco acinzentado
+	local ColorTextDim = Color3.fromRGB(130, 130, 130) -- Cinza médio
+	local ColorAccent = Color3.fromRGB(200, 200, 200) -- Cinza claro (para destaques)
+	local ColorToggleOff = Color3.fromRGB(40, 40, 40)
+	
 	local frame = Instance.new("Frame") 
 	frame.Name = "Main" 
-	frame.Size = UDim2.new(0, 280, 0, 460) 
+	frame.Size = UDim2.new(0, 320, 0, 480) 
 	frame.AnchorPoint = Vector2.new(0.5, 0.5) 
 	frame.Position = UDim2.new(0.5, 0, 0.5, 0) 
-	frame.BackgroundColor3 = Color3.fromRGB(25, 25, 30) 
-	frame.BackgroundTransparency = 0.05 
+	frame.BackgroundColor3 = ColorBackground 
 	frame.BorderSizePixel = 0 
 	frame.Active = true 
 	frame.ClipsDescendants = false 
@@ -110,63 +115,107 @@ local function bui()
 	local function us() local vp = workspace.CurrentCamera.ViewportSize local s = math.clamp(vp.X / 1920, 0.75, 1.2) scale.Scale = s end 
 	us() workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(us) 
 	
-	-- [NOVO] Animação de Entrada Fluida
+	-- Animação de Entrada
 	scale.Scale = 0
-	local entranceTween = TweenService:Create(scale, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1})
+	local entranceTween = TweenService:Create(scale, TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1})
 	entranceTween:Play()
 	
-	local corner = Instance.new("UICorner") corner.CornerRadius = UDim.new(0, 8) corner.Parent = frame 
-	local stroke = Instance.new("UIStroke") stroke.Color = Color3.fromRGB(90, 90, 110) stroke.Thickness = 1 stroke.Parent = frame 
+	local corner = Instance.new("UICorner") corner.CornerRadius = UDim.new(0, 12) corner.Parent = frame 
+	local stroke = Instance.new("UIStroke") stroke.Color = Color3.fromRGB(50, 50, 50) stroke.Thickness = 1.5 stroke.Transparency = 0.2 stroke.Parent = frame 
 	
-	local title = Instance.new("TextLabel") title.Name = "Title" title.Size = UDim2.new(1, 0, 0, 32) title.BackgroundColor3 = Color3.fromRGB(40, 40, 50) title.BorderSizePixel = 0 title.Text = " Ability Wars" title.TextColor3 = Color3.fromRGB(230, 230, 240) title.TextXAlignment = Enum.TextXAlignment.Left title.Font = Enum.Font.GothamBold title.TextSize = 15 title.Parent = frame 
-	local tc = Instance.new("UICorner") tc.CornerRadius = UDim.new(0, 8) tc.Parent = title 
+	-- TopBar Premium
+	local title = Instance.new("TextLabel") 
+	title.Name = "Title" title.Size = UDim2.new(1, 0, 0, 40) title.BackgroundColor3 = ColorPanel title.BorderSizePixel = 0 
+	title.Text = "  🖤 Ability Wars" 
+	title.TextColor3 = ColorText title.TextXAlignment = Enum.TextXAlignment.Left title.Font = Enum.Font.GothamBold title.TextSize = 16 title.Parent = frame 
+	local tc = Instance.new("UICorner") tc.CornerRadius = UDim.new(0, 12) tc.Parent = title 
+	local tBarFix = Instance.new("Frame") tBarFix.Size = UDim2.new(1, 0, 0, 15) tBarFix.Position = UDim2.new(0, 0, 1, -15) tBarFix.BackgroundColor3 = ColorPanel tBarFix.BorderSizePixel = 0 tBarFix.Parent = title
 	
-	local btnMin = Instance.new("TextButton") btnMin.Size = UDim2.new(0, 22, 0, 22) btnMin.Position = UDim2.new(1, -50, 0, -10) btnMin.BackgroundColor3 = Color3.fromRGB(50, 50, 50) btnMin.Text = "–" btnMin.TextColor3 = Color3.fromRGB(200, 200, 200) btnMin.Font = Enum.Font.GothamBold btnMin.TextSize = 16 btnMin.ZIndex = 10 btnMin.Parent = frame 
-	local bmc = Instance.new("UICorner"); bmc.CornerRadius = UDim.new(0, 4); bmc.Parent = btnMin 
-	local bms = Instance.new("UIStroke"); bms.Color = Color3.fromRGB(90, 90, 110); bms.Parent = btnMin
+	local line = Instance.new("Frame") 
+	line.Size = UDim2.new(1, 0, 0, 1) line.Position = UDim2.new(0, 0, 1, -1) line.BackgroundColor3 = Color3.fromRGB(60, 60, 60) line.BorderSizePixel = 0 line.Parent = title
 	
-	local btnLock = Instance.new("TextButton") btnLock.Size = UDim2.new(0, 22, 0, 22) btnLock.Position = UDim2.new(1, -24, 0, -10) btnLock.BackgroundColor3 = Color3.fromRGB(50, 50, 50) btnLock.Text = "X" btnLock.TextColor3 = Color3.fromRGB(200, 200, 200) btnLock.Font = Enum.Font.GothamBold btnLock.TextSize = 14 btnLock.ZIndex = 10 btnLock.Parent = frame 
-	local blc = Instance.new("UICorner"); blc.CornerRadius = UDim.new(0, 4); blc.Parent = btnLock 
-	local bls = Instance.new("UIStroke"); bls.Color = Color3.fromRGB(90, 90, 110); bls.Parent = btnLock
+	-- Botões de Controle
+	local btnMin = Instance.new("TextButton") btnMin.Size = UDim2.new(0, 26, 0, 26) btnMin.Position = UDim2.new(1, -70, 0, 7) btnMin.BackgroundColor3 = Color3.fromRGB(40, 40, 40) btnMin.Text = "–" btnMin.TextColor3 = ColorText btnMin.Font = Enum.Font.GothamBold btnMin.TextSize = 18 btnMin.Parent = title 
+	local bmc = Instance.new("UICorner"); bmc.CornerRadius = UDim.new(0, 6); bmc.Parent = btnMin 
+	local bms = Instance.new("UIStroke"); bms.Color = Color3.fromRGB(60,60,60); bms.Parent = btnMin
+	
+	local btnLock = Instance.new("TextButton") btnLock.Size = UDim2.new(0, 26, 0, 26) btnLock.Position = UDim2.new(1, -38, 0, 7) btnLock.BackgroundColor3 = Color3.fromRGB(40, 40, 40) btnLock.Text = "🔓" btnLock.TextColor3 = ColorText btnLock.Font = Enum.Font.GothamBold btnLock.TextSize = 14 btnLock.Parent = title 
+	local blc = Instance.new("UICorner"); blc.CornerRadius = UDim.new(0, 6); blc.Parent = btnLock 
+	local bls = Instance.new("UIStroke"); bls.Color = Color3.fromRGB(60,60,60); bls.Parent = btnLock
 
-	local content = Instance.new("Frame") content.Size = UDim2.new(1, -16, 1, -42) content.Position = UDim2.new(0, 8, 0, 36) content.BackgroundTransparency = 1 content.Parent = frame 
-	local layout = Instance.new("UIListLayout") layout.SortOrder = Enum.SortOrder.LayoutOrder layout.Padding = UDim.new(0, 6) layout.Parent = content 
+	-- Scroll Container
+	local content = Instance.new("ScrollingFrame") 
+	content.Size = UDim2.new(1, -20, 1, -50) content.Position = UDim2.new(0, 10, 0, 45) content.BackgroundTransparency = 1 
+	content.ScrollBarThickness = 3 content.ScrollBarImageColor3 = ColorTextDim
+	content.Parent = frame 
+	local layout = Instance.new("UIListLayout") layout.SortOrder = Enum.SortOrder.LayoutOrder layout.Padding = UDim.new(0, 8) layout.Parent = content 
 	
+	-- COMPONENTE: Toggle Monocromático
 	local function mt(text, getter, setter) 
-		local row = Instance.new("Frame") row.Size = UDim2.new(1, 0, 0, 30) row.BackgroundColor3 = Color3.fromRGB(35, 35, 42) row.BorderSizePixel = 0 row.Parent = content 
-		local c = Instance.new("UICorner") c.CornerRadius = UDim.new(0, 6) c.Parent = row 
-		local label = Instance.new("TextLabel") label.Size = UDim2.new(1, -60, 1, 0) label.Position = UDim2.new(0, 10, 0, 0) label.BackgroundTransparency = 1 label.Text = text label.TextColor3 = Color3.fromRGB(220, 220, 230) label.TextXAlignment = Enum.TextXAlignment.Left label.Font = Enum.Font.Gotham label.TextSize = 13 label.Parent = row 
-		local btn = Instance.new("TextButton") btn.Size = UDim2.new(0, 44, 0, 20) btn.Position = UDim2.new(1, -54, 0.5, -10) btn.BackgroundColor3 = getter() and Color3.fromRGB(80, 200, 120) or Color3.fromRGB(80, 80, 90) btn.BorderSizePixel = 0 btn.Text = getter() and "ON" or "OFF" btn.TextColor3 = Color3.fromRGB(255, 255, 255) btn.Font = Enum.Font.GothamBold btn.TextSize = 12 btn.Parent = row 
-		local bc = Instance.new("UICorner") bc.CornerRadius = UDim.new(0, 4) bc.Parent = btn 
+		local row = Instance.new("Frame") row.Size = UDim2.new(1, 0, 0, 40) row.BackgroundColor3 = ColorPanel row.BorderSizePixel = 0 row.Parent = content 
+		local c = Instance.new("UICorner") c.CornerRadius = UDim.new(0, 8) c.Parent = row 
+		local s = Instance.new("UIStroke") s.Color = Color3.fromRGB(40,40,40) s.Parent = row
 		
-		-- Animação de cor no Toggle
+		local label = Instance.new("TextLabel") label.Size = UDim2.new(1, -70, 1, 0) label.Position = UDim2.new(0, 14, 0, 0) label.BackgroundTransparency = 1 label.Text = text label.TextColor3 = ColorText label.TextXAlignment = Enum.TextXAlignment.Left label.Font = Enum.Font.GothamMedium label.TextSize = 14 label.Parent = row 
+		
+		-- Botão estilo Pílula
+		local btn = Instance.new("TextButton") btn.Size = UDim2.new(0, 46, 0, 22) btn.Position = UDim2.new(1, -60, 0.5, -11) btn.BackgroundColor3 = getter() and ColorAccent or ColorToggleOff btn.BorderSizePixel = 0 btn.Text = "" btn.Parent = row 
+		local bc = Instance.new("UICorner") bc.CornerRadius = UDim.new(1, 0) bc.Parent = btn 
+		
+		-- Bolinha (Invertida dependendo do estado)
+		local dotColor = getter() and Color3.fromRGB(20,20,20) or Color3.fromRGB(150,150,150)
+		local dot = Instance.new("Frame") dot.Size = UDim2.new(0, 16, 0, 16) dot.Position = getter() and UDim2.new(1, -20, 0.5, -8) or UDim2.new(0, 4, 0.5, -8) dot.BackgroundColor3 = dotColor dot.Parent = btn 
+		local dc = Instance.new("UICorner") dc.CornerRadius = UDim.new(1, 0) dc.Parent = dot
+		
 		btn.MouseButton1Click:Connect(function() 
 			setter(not getter()) 
-			local targetColor = getter() and Color3.fromRGB(80, 200, 120) or Color3.fromRGB(80, 80, 90)
+			local targetColor = getter() and ColorAccent or ColorToggleOff
+			local targetPos = getter() and UDim2.new(1, -20, 0.5, -8) or UDim2.new(0, 4, 0.5, -8)
+			local targetDotColor = getter() and Color3.fromRGB(20,20,20) or Color3.fromRGB(150,150,150)
+			
 			TweenService:Create(btn, TweenInfo.new(0.2), {BackgroundColor3 = targetColor}):Play()
-			btn.Text = getter() and "ON" or "OFF" SaveConfig() 
+			TweenService:Create(dot, TweenInfo.new(0.2), {BackgroundColor3 = targetDotColor}):Play()
+			TweenService:Create(dot, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Position = targetPos}):Play()
+			SaveConfig() 
 		end) 
 	end 
 	
+	-- COMPONENTE: Input Monocromático
 	local function mi(text, default, getter, setter) 
-		local row = Instance.new("Frame") row.Size = UDim2.new(1, 0, 0, 32) row.BackgroundColor3 = Color3.fromRGB(35, 35, 42) row.BorderSizePixel = 0 row.Parent = content 
-		local c = Instance.new("UICorner") c.CornerRadius = UDim.new(0, 6) c.Parent = row 
-		local label = Instance.new("TextLabel") label.Size = UDim2.new(0.6, -10, 1, 0) label.Position = UDim2.new(0, 10, 0, 0) label.BackgroundTransparency = 1 label.Text = text label.TextColor3 = Color3.fromRGB(220, 220, 230) label.TextXAlignment = Enum.TextXAlignment.Left label.Font = Enum.Font.Gotham label.TextSize = 13 label.Parent = row 
-		local box = Instance.new("TextBox") box.Size = UDim2.new(0.4, -10, 0, 24) box.Position = UDim2.new(0.6, 0, 0.5, -12) box.BackgroundColor3 = Color3.fromRGB(50, 50, 60) box.TextColor3 = Color3.fromRGB(255, 255, 255) box.Font = Enum.Font.Gotham box.TextSize = 13 box.Text = tostring(default) box.PlaceholderText = "Num" box.PlaceholderColor3 = Color3.fromRGB(150, 150, 150) box.Parent = row 
-		local bc = Instance.new("UICorner") bc.CornerRadius = UDim.new(0, 4) bc.Parent = box 
-		box.FocusLost:Connect(function() local val = tonumber(box.Text) if val then if text == "Aura Interval" then val = math.clamp(val, 0.1, 25) else val = math.floor(val) val = math.clamp(val, 1, 25) end setter(val) box.Text = tostring(val) SaveConfig() else box.Text = tostring(getter()) end end) 
+		local row = Instance.new("Frame") row.Size = UDim2.new(1, 0, 0, 40) row.BackgroundColor3 = ColorPanel row.BorderSizePixel = 0 row.Parent = content 
+		local c = Instance.new("UICorner") c.CornerRadius = UDim.new(0, 8) c.Parent = row 
+		local s = Instance.new("UIStroke") s.Color = Color3.fromRGB(40,40,40) s.Parent = row
+		
+		local label = Instance.new("TextLabel") label.Size = UDim2.new(0.6, -10, 1, 0) label.Position = UDim2.new(0, 14, 0, 0) label.BackgroundTransparency = 1 label.Text = text label.TextColor3 = ColorText label.TextXAlignment = Enum.TextXAlignment.Left label.Font = Enum.Font.GothamMedium label.TextSize = 14 label.Parent = row 
+		
+		local box = Instance.new("TextBox") box.Size = UDim2.new(0.35, 0, 0, 26) box.Position = UDim2.new(0.65, -10, 0.5, -13) box.BackgroundColor3 = Color3.fromRGB(35, 35, 35) box.TextColor3 = ColorText box.Font = Enum.Font.GothamBold box.TextSize = 14 box.Text = tostring(default) box.Parent = row 
+		local bc = Instance.new("UICorner") bc.CornerRadius = UDim.new(0, 6) bc.Parent = box 
+		local bs = Instance.new("UIStroke") bs.Color = Color3.fromRGB(60, 60, 60) bs.Parent = box
+		
+		box.Focused:Connect(function() TweenService:Create(bs, TweenInfo.new(0.2), {Color = ColorText}):Play() end)
+		box.FocusLost:Connect(function() 
+			TweenService:Create(bs, TweenInfo.new(0.2), {Color = Color3.fromRGB(60, 60, 60)}):Play()
+			local val = tonumber(box.Text) 
+			if val then 
+				if text == "Aura Interval" then val = math.clamp(val, 0.1, 25) else val = math.floor(val) val = math.clamp(val, 1, 25) end 
+				setter(val) box.Text = tostring(val) SaveConfig() 
+			else box.Text = tostring(getter()) end 
+		end) 
 	end 
 	
+	-- Criação dos Itens
 	mt("Punch Bypass", function() return Config.PunchBypass.enabled end, function(v) Config.PunchBypass.enabled = v end) 
 	mi("Punch Range", Config.PunchBypass.range, function() return Config.PunchBypass.range end, function(v) Config.PunchBypass.range = v end) 
 	mt("Mini Aura", function() return Config.MiniAura.enabled end, function(v) Config.MiniAura.enabled = v if v then sa() end end) 
 	mi("Aura Range", Config.MiniAura.range, function() return Config.MiniAura.range end, function(v) Config.MiniAura.range = v end) 
 	mi("Aura Interval", Config.MiniAura.interval, function() return Config.MiniAura.interval end, function(v) Config.MiniAura.interval = v end) 
+	
+	local secFriend = Instance.new("TextLabel") secFriend.Size = UDim2.new(1, 0, 0, 20) secFriend.BackgroundTransparency = 1 secFriend.Text = "PROTEÇÃO DE AMIGOS" secFriend.TextColor3 = ColorTextDim secFriend.Font = Enum.Font.GothamBold secFriend.TextSize = 11 secFriend.TextXAlignment = Enum.TextXAlignment.Left secFriend.Parent = content
 	mt("Proteger Amigos", function() return Config.FriendProtection end, function(v) Config.FriendProtection = v if FriendListFrameRefs.updateUI then FriendListFrameRefs.updateUI() end end) 
 	
-	local friendListFrame = Instance.new("ScrollingFrame") friendListFrame.Size = UDim2.new(1, 0, 0, 100) friendListFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 35) friendListFrame.BorderSizePixel = 0 friendListFrame.ScrollBarThickness = 4 friendListFrame.Parent = content 
-	local flCorner = Instance.new("UICorner") flCorner.CornerRadius = UDim.new(0, 6) flCorner.Parent = friendListFrame 
-	local flLayout = Instance.new("UIListLayout") flLayout.SortOrder = Enum.SortOrder.LayoutOrder flLayout.Padding = UDim.new(0, 2) flLayout.Parent = friendListFrame 
+	local friendListFrame = Instance.new("ScrollingFrame") friendListFrame.Size = UDim2.new(1, 0, 0, 110) friendListFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20) friendListFrame.BorderSizePixel = 0 friendListFrame.ScrollBarThickness = 3 friendListFrame.ScrollBarImageColor3 = ColorTextDim friendListFrame.Parent = content 
+	local flCorner = Instance.new("UICorner") flCorner.CornerRadius = UDim.new(0, 8) flCorner.Parent = friendListFrame 
+	local flLayout = Instance.new("UIListLayout") flLayout.SortOrder = Enum.SortOrder.LayoutOrder flLayout.Padding = UDim.new(0, 4) flLayout.Parent = friendListFrame 
 
 	FriendListFrameRefs.updateUI = function()
 		for _, v in ipairs(friendListFrame:GetChildren()) do if v:IsA("TextLabel") then v:Destroy() end end
@@ -174,78 +223,51 @@ local function bui()
 		for _, plr in ipairs(Players:GetPlayers()) do
 			if plr ~= LP and isFriend(plr) then
 				count = count + 1
-				local nameLbl = Instance.new("TextLabel") nameLbl.Size = UDim2.new(1, -10, 0, 22) nameLbl.BackgroundTransparency = 1 nameLbl.Text = plr.Name nameLbl.TextXAlignment = Enum.TextXAlignment.Left nameLbl.Font = Enum.Font.Gotham nameLbl.TextSize = 13 nameLbl.Parent = friendListFrame
-				if Config.FriendProtection then nameLbl.TextColor3 = Color3.fromRGB(100, 100, 100) else nameLbl.TextColor3 = Color3.fromRGB(220, 220, 230) end
+				local nameLbl = Instance.new("TextLabel") nameLbl.Size = UDim2.new(1, -20, 0, 24) nameLbl.BackgroundTransparency = 1 nameLbl.Text = "👤 " .. plr.Name nameLbl.TextXAlignment = Enum.TextXAlignment.Left nameLbl.Font = Enum.Font.GothamMedium nameLbl.TextSize = 13 nameLbl.Parent = friendListFrame
+				
+				-- Protegido (Cinza Escuro/Inativo) / Desprotegido (Branco Ativo)
+				if Config.FriendProtection then nameLbl.TextColor3 = Color3.fromRGB(100, 100, 100) else nameLbl.TextColor3 = ColorText end
 			end
 		end
-		if count == 0 then local emptyLbl = Instance.new("TextLabel") emptyLbl.Size = UDim2.new(1, -10, 0, 20) emptyLbl.BackgroundTransparency = 1 emptyLbl.Text = "Nenhum amigo no servidor" emptyLbl.TextColor3 = Color3.fromRGB(150, 150, 150) emptyLbl.Font = Enum.Font.Gotham emptyLbl.TextSize = 12 emptyLbl.Parent = friendListFrame end
-		friendListFrame.CanvasSize = UDim2.new(0, 0, 0, flLayout.AbsoluteContentSize.Y + 5)
+		if count == 0 then local emptyLbl = Instance.new("TextLabel") emptyLbl.Size = UDim2.new(1, 0, 0, 24) emptyLbl.BackgroundTransparency = 1 emptyLbl.Text = "Nenhum amigo no servidor" emptyLbl.TextColor3 = ColorTextDim emptyLbl.Font = Enum.Font.Gotham emptyLbl.TextSize = 12 emptyLbl.Parent = friendListFrame end
+		friendListFrame.CanvasSize = UDim2.new(0, 0, 0, flLayout.AbsoluteContentSize.Y + 10)
 	end
 
-	local btnCheck = Instance.new("TextButton") btnCheck.Size = UDim2.new(1, 0, 0, 28) btnCheck.BackgroundColor3 = Color3.fromRGB(60, 60, 70) btnCheck.BorderSizePixel = 0 btnCheck.Text = "🔄 Check-Friends (Verificar)" btnCheck.TextColor3 = Color3.fromRGB(220, 220, 230) btnCheck.Font = Enum.Font.GothamBold btnCheck.TextSize = 12 btnCheck.Parent = content 
-	local bcc = Instance.new("UICorner"); bcc.CornerRadius = UDim.new(0, 6); bcc.Parent = btnCheck
+	local btnCheck = Instance.new("TextButton") btnCheck.Size = UDim2.new(1, 0, 0, 34) btnCheck.BackgroundColor3 = Color3.fromRGB(50, 50, 50) btnCheck.BorderSizePixel = 0 btnCheck.Text = "🔄 Verificar Amizades" btnCheck.TextColor3 = ColorText btnCheck.Font = Enum.Font.GothamBold btnCheck.TextSize = 14 btnCheck.Parent = content 
+	local bcc = Instance.new("UICorner"); bcc.CornerRadius = UDim.new(0, 8); bcc.Parent = btnCheck
 
 	btnCheck.MouseButton1Click:Connect(function()
-		btnCheck.Text = "Verificando..." btnCheck.TextColor3 = Color3.fromRGB(255, 200, 0)
+		btnCheck.Text = "Verificando..." btnCheck.TextColor3 = ColorTextDim
 		task.wait(0.5) updateFriendsCache()
-		btnCheck.Text = "✅ Verificado!" btnCheck.TextColor3 = Color3.fromRGB(80, 200, 120)
-		task.wait(1) btnCheck.Text = "🔄 Check-Friends (Verificar)" btnCheck.TextColor3 = Color3.fromRGB(220, 220, 230)
+		btnCheck.Text = "✅ Verificado!" btnCheck.TextColor3 = ColorText
+		task.wait(1) btnCheck.Text = "🔄 Verificar Amizades"
 	end)
 
 	updateFriendsCache()
 	
-	btnLock.MouseButton1Click:Connect(function() State.isLocked = not State.isLocked if State.isLocked then btnLock.TextColor3 = Color3.fromRGB(255, 100, 100) btnLock.Text = "🔒" else btnLock.TextColor3 = Color3.fromRGB(200, 200, 200) btnLock.Text = "X" end end)
+	-- Travar e Minimizar
+	btnLock.MouseButton1Click:Connect(function() State.isLocked = not State.isLocked if State.isLocked then btnLock.Text = "🔒" btnLock.TextColor3 = Color3.fromRGB(200, 200, 200) else btnLock.Text = "🔓" btnLock.TextColor3 = ColorText end end)
 	
-	-- Animação de Minimizar/Maximizar Fluida
 	local originalSize = frame.Size
 	btnMin.MouseButton1Click:Connect(function() 
-		if State.isAnimating then return end
-		State.isAnimating = true
-		State.isMinimized = not State.isMinimized 
-		
+		if State.isAnimating then return end State.isAnimating = true State.isMinimized = not State.isMinimized 
 		if State.isMinimized then 
-			content.Visible = false
-			local tween = TweenService:Create(frame, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Size = UDim2.new(0, 280, 0, 32)})
-			tween:Play()
-			tween.Completed:Wait()
-			btnMin.Text = "+" 
+			local t = TweenService:Create(frame, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Size = UDim2.new(0, 320, 0, 40)})
+			t:Play() t.Completed:Wait() content.Visible = false btnMin.Text = "+" 
 		else 
-			content.Visible = true
-			local tween = TweenService:Create(frame, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Size = originalSize})
-			tween:Play()
-			tween.Completed:Wait()
-			btnMin.Text = "–" 
-		end
-		State.isAnimating = false
+			content.Visible = true 
+			local t = TweenService:Create(frame, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Size = originalSize})
+			t:Play() t.Completed:Wait() btnMin.Text = "–" 
+		end State.isAnimating = false
 	end)
 
-	-- [NOVO] Arrasto pelo Menu Inteiro
-	local function startDrag(input)
-		if State.isLocked then return end 
-		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then 
-			State.dragging = true 
-			State.dragStart = input.Position 
-			State.dragOrigin = frame.Position 
-		end 
-	end
+	-- Arrasto
+	local function startDrag(input) if State.isLocked then return end if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then State.dragging = true State.dragStart = input.Position State.dragOrigin = frame.Position end end 
+	title.InputBegan:Connect(startDrag) frame.InputBegan:Connect(startDrag)
 	
-	-- Permite arrastar pela barra de título ou pelo fundo do menu
-	title.InputBegan:Connect(startDrag) 
-	frame.InputBegan:Connect(startDrag)
+	UIS.InputChanged:Connect(function(input) if not State.dragging then return end if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then local delta = input.Position - State.dragStart frame.Position = UDim2.new(State.dragOrigin.X.Scale, State.dragOrigin.X.Offset + delta.X, State.dragOrigin.Y.Scale, State.dragOrigin.Y.Offset + delta.Y) end end) 
+	UIS.InputEnded:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then State.dragging = false end end) 
 	
-	UIS.InputChanged:Connect(function(input) 
-		if not State.dragging then return end 
-		if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then 
-			local delta = input.Position - State.dragStart 
-			frame.Position = UDim2.new(State.dragOrigin.X.Scale, State.dragOrigin.X.Offset + delta.X, State.dragOrigin.Y.Scale, State.dragOrigin.Y.Offset + delta.Y) 
-		end 
-	end) 
-	
-	UIS.InputEnded:Connect(function(input) 
-		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then 
-			State.dragging = false 
-		end 
-	end) 
 	return sg, frame 
 end 
 
