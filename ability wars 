@@ -1,3 +1,7 @@
+-- ==========================================
+-- ABILITY WARS PREMIUM (MONOCROMÁTICO)
+-- ==========================================
+
 local Players = game:GetService("Players") 
 local RS = game:GetService("ReplicatedStorage") 
 local UIS = game:GetService("UserInputService") 
@@ -16,18 +20,57 @@ local Config = {
 	FriendProtection = true 
 } 
 
-local function SaveConfig() if writefile then pcall(function() writefile(CONFIG_FILE, HttpService:JSONEncode(Config)) end) end end
-local function LoadConfig() if isfile and isfile(CONFIG_FILE) then local success, data = pcall(function() return HttpService:JSONDecode(readfile(CONFIG_FILE)) end) if success and data then for k, v in pairs(data) do if type(v) == "table" and Config[k] then for k2, v2 in pairs(v) do Config[k][k2] = v2 end else Config[k] = v end end end end end
+-- ==========================================
+-- SISTEMA DE SALVAMENTO (AUTO-SAVE)
+-- ==========================================
+local function SaveConfig() 
+	if writefile then 
+		pcall(function() writefile(CONFIG_FILE, HttpService:JSONEncode(Config)) end) 
+	end 
+end
+
+local function LoadConfig() 
+	if isfile and isfile(CONFIG_FILE) then 
+		local success, data = pcall(function() return HttpService:JSONDecode(readfile(CONFIG_FILE)) end) 
+		if success and data then 
+			for k, v in pairs(data) do 
+				if type(v) == "table" and Config[k] then 
+					for k2, v2 in pairs(v) do Config[k][k2] = v2 end 
+				else 
+					Config[k] = v 
+				end 
+			end 
+		end 
+	end 
+end
 LoadConfig()
 
-local State = { lastBypass = 0, auraThread = nil, dragging = false, dragStart = nil, dragOrigin = nil, visible = true, gui = nil, isLocked = false, isMinimized = false, isAnimating = false } 
+-- ==========================================
+-- ESTADO GLOBAL
+-- ==========================================
+local State = { 
+	lastBypass = 0, auraThread = nil, 
+	dragging = false, dragStart = nil, 
+	visible = true, gui = nil, 
+	isLocked = false, isMinimized = false, 
+	isAnimating = false 
+} 
 
 local FriendsCache = {}
 local FriendListFrameRefs = {} 
 
+-- ==========================================
+-- SISTEMA DE AMIGOS
+-- ==========================================
 local function updateFriendsCache()
 	local temp = {}
-	for _, p in ipairs(Players:GetPlayers()) do if p ~= LP then pcall(function() if LP:IsFriendsWith(p.UserId) then temp[p.UserId] = true end end) end end
+	for _, p in ipairs(Players:GetPlayers()) do 
+		if p ~= LP then 
+			pcall(function() 
+				if LP:IsFriendsWith(p.UserId) then temp[p.UserId] = true end 
+			end) 
+		end 
+	end
 	FriendsCache = temp
 	if FriendListFrameRefs.updateUI then FriendListFrameRefs.updateUI() end
 end
@@ -36,6 +79,9 @@ task.spawn(function() task.wait(1) updateFriendsCache() end)
 Players.PlayerAdded:Connect(function() task.wait(1) updateFriendsCache() end)
 Players.PlayerRemoving:Connect(function() task.wait(1) updateFriendsCache() end)
 
+-- ==========================================
+-- LÓGICA DE COMBATE
+-- ==========================================
 local function gc() return LP.Character end 
 local function gr() local c = gc() return c and c:FindFirstChild("HumanoidRootPart") end 
 local function al(m) if not m or not m.Parent then return false end local h = m:FindFirstChildOfClass("Humanoid") return h and h.Health > 0 end 
@@ -43,31 +89,45 @@ local function fhp(target) if not target then return nil end for _, name in ipai
 local function isFriend(plr) return FriendsCache[plr.UserId] ~= nil end
 
 local function collectTargets(range) 
-	local hrp = gr() if not hrp then return {} end local myPos = hrp.Position local list = {} 
+	local hrp = gr() if not hrp then return {} end 
+	local myPos = hrp.Position local list = {} 
 	for _, plr in ipairs(Players:GetPlayers()) do 
 		if plr ~= LP and al(plr.Character) and not (Config.FriendProtection and isFriend(plr)) then 
-			local tHRP = plr.Character:FindFirstChild("HumanoidRootPart") if tHRP and (tHRP.Position - myPos).Magnitude <= range then table.insert(list, plr.Character) end 
+			local tHRP = plr.Character:FindFirstChild("HumanoidRootPart") 
+			if tHRP and (tHRP.Position - myPos).Magnitude <= range then 
+				table.insert(list, plr.Character) 
+			end 
 		end 
-	end return list 
+	end 
+	return list 
 end 
 
 local function closestTarget(range) 
-	local hrp = gr() if not hrp then return nil end local myPos = hrp.Position local best, bestDist = nil, range 
+	local hrp = gr() if not hrp then return nil end 
+	local myPos = hrp.Position local best, bestDist = nil, range 
 	for _, plr in ipairs(Players:GetPlayers()) do 
 		if plr ~= LP and al(plr.Character) and not (Config.FriendProtection and isFriend(plr)) then 
-			local tHRP = plr.Character:FindFirstChild("HumanoidRootPart") if tHRP then local d = (tHRP.Position - myPos).Magnitude if d <= bestDist then bestDist = d best = plr.Character end end 
+			local tHRP = plr.Character:FindFirstChild("HumanoidRootPart") 
+			if tHRP then 
+				local d = (tHRP.Position - myPos).Magnitude 
+				if d <= bestDist then bestDist = d best = plr.Character end 
+			end 
 		end 
-	end return best 
+	end 
+	return best 
 end 
 
 local function sp(target, abilityId) 
 	local char = gc() local hrp = gr() if not char or not hrp then return end 
-	local hitbox = char:FindFirstChild("Hitbox") local weld = hrp:FindFirstChild("Hitbox Weld") if not hitbox or not weld then return end 
+	local hitbox = char:FindFirstChild("Hitbox") local weld = hrp:FindFirstChild("Hitbox Weld") 
+	if not hitbox or not weld then return end 
 	local hitPart = fhp(target) if not hitPart then return end 
 	local camera = workspace.CurrentCamera local mousePos = camera.CFrame.Position + camera.CFrame.LookVector * 100 
 	SendPacket:FireServer("Use Ability", "Punch", char:GetPivot(), mousePos, nil) 
 	task.wait(0.05) 
-	pcall(function() SendPacket:FireServer("Use Punch", abilityId, target, hitbox.Position + Vector3.new(0, 0.5, 0), 2, hitbox.Size, weld.C0, hitPart, hitPart.Size, hrp.CFrame.LookVector) end) 
+	pcall(function() 
+		SendPacket:FireServer("Use Punch", abilityId, target, hitbox.Position + Vector3.new(0, 0.5, 0), 2, hitbox.Size, weld.C0, hitPart, hitPart.Size, hrp.CFrame.LookVector) 
+	end) 
 end 
 
 local function pb() 
@@ -78,11 +138,24 @@ end
 
 local function sa() 
 	if State.auraThread then return end State.auraThread = true 
-	task.spawn(function() while true do if Config.MiniAura.enabled then local targets = collectTargets(Config.MiniAura.range) if #targets > 0 then local target = targets[math.random(#targets)] if target and target.Parent then pcall(sp, target, Config.MiniAura.abilityId) end end task.wait(Config.MiniAura.interval) else task.wait(0.2) end end end) 
+	task.spawn(function() 
+		while true do 
+			if Config.MiniAura.enabled then 
+				local targets = collectTargets(Config.MiniAura.range) 
+				if #targets > 0 then 
+					local target = targets[math.random(#targets)] 
+					if target and target.Parent then pcall(sp, target, Config.MiniAura.abilityId) end 
+				end 
+				task.wait(Config.MiniAura.interval) 
+			else 
+				task.wait(0.2) 
+			end 
+		end 
+	end) 
 end 
 
 -- ==========================================
--- INTERFACE PREMIUM (MONOCROMÁTICA)
+-- INTERFACE GRÁFICA (MONOCROMÁTICA)
 -- ==========================================
 local function bui() 
 	local pg = LP:WaitForChild("PlayerGui") 
@@ -92,19 +165,19 @@ local function bui()
 	sg.Name = "AbilityWarsUI" sg.ResetOnSpawn = false sg.IgnoreGuiInset = true sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling sg.DisplayOrder = 100 sg.Parent = pg 
 	State.gui = sg 
 	
-	-- Cores Estritas (Preto, Branco e Cinza)
-	local ColorBackground = Color3.fromRGB(10, 10, 10) -- Quase preto
-	local ColorPanel = Color3.fromRGB(25, 25, 25) -- Cinza muito escuro
-	local ColorText = Color3.fromRGB(245, 245, 245) -- Branco acinzentado
-	local ColorTextDim = Color3.fromRGB(130, 130, 130) -- Cinza médio
-	local ColorAccent = Color3.fromRGB(200, 200, 200) -- Cinza claro (para destaques)
+	-- Paleta de Cores (Preto, Branco e Cinza)
+	local ColorBackground = Color3.fromRGB(12, 12, 12) 
+	local ColorPanel = Color3.fromRGB(24, 24, 24) 
+	local ColorText = Color3.fromRGB(240, 240, 240) 
+	local ColorTextDim = Color3.fromRGB(140, 140, 140) 
+	local ColorAccent = Color3.fromRGB(220, 220, 220) 
 	local ColorToggleOff = Color3.fromRGB(40, 40, 40)
 	
 	local frame = Instance.new("Frame") 
 	frame.Name = "Main" 
-	frame.Size = UDim2.new(0, 320, 0, 480) 
-	frame.AnchorPoint = Vector2.new(0.5, 0.5) 
-	frame.Position = UDim2.new(0.5, 0, 0.5, 0) 
+	frame.Size = UDim2.new(0, 300, 0, 450) 
+	frame.AnchorPoint = Vector2.new(0, 0) 
+	frame.Position = UDim2.new(0.5, -150, 0.5, -225) 
 	frame.BackgroundColor3 = ColorBackground 
 	frame.BorderSizePixel = 0 
 	frame.Active = true 
@@ -112,18 +185,23 @@ local function bui()
 	frame.Parent = sg 
 	
 	local scale = Instance.new("UIScale") scale.Parent = frame 
-	local function us() local vp = workspace.CurrentCamera.ViewportSize local s = math.clamp(vp.X / 1920, 0.75, 1.2) scale.Scale = s end 
-	us() workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(us) 
+	local function us() 
+		local vp = workspace.CurrentCamera.ViewportSize 
+		local s = math.clamp(vp.X / 1500, 0.7, 1.1) 
+		scale.Scale = s 
+	end 
+	us() 
+	workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(us) 
 	
 	-- Animação de Entrada
 	scale.Scale = 0
-	local entranceTween = TweenService:Create(scale, TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1})
+	local entranceTween = TweenService:Create(scale, TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = us() or 1})
 	entranceTween:Play()
 	
 	local corner = Instance.new("UICorner") corner.CornerRadius = UDim.new(0, 12) corner.Parent = frame 
-	local stroke = Instance.new("UIStroke") stroke.Color = Color3.fromRGB(50, 50, 50) stroke.Thickness = 1.5 stroke.Transparency = 0.2 stroke.Parent = frame 
+	local stroke = Instance.new("UIStroke") stroke.Color = Color3.fromRGB(60, 60, 60) stroke.Thickness = 1.5 stroke.Transparency = 0.2 stroke.Parent = frame 
 	
-	-- TopBar Premium
+	-- TopBar
 	local title = Instance.new("TextLabel") 
 	title.Name = "Title" title.Size = UDim2.new(1, 0, 0, 40) title.BackgroundColor3 = ColorPanel title.BorderSizePixel = 0 
 	title.Text = "  🖤 Ability Wars" 
@@ -134,14 +212,12 @@ local function bui()
 	local line = Instance.new("Frame") 
 	line.Size = UDim2.new(1, 0, 0, 1) line.Position = UDim2.new(0, 0, 1, -1) line.BackgroundColor3 = Color3.fromRGB(60, 60, 60) line.BorderSizePixel = 0 line.Parent = title
 	
-	-- Botões de Controle
+	-- Botões TopBar
 	local btnMin = Instance.new("TextButton") btnMin.Size = UDim2.new(0, 26, 0, 26) btnMin.Position = UDim2.new(1, -70, 0, 7) btnMin.BackgroundColor3 = Color3.fromRGB(40, 40, 40) btnMin.Text = "–" btnMin.TextColor3 = ColorText btnMin.Font = Enum.Font.GothamBold btnMin.TextSize = 18 btnMin.Parent = title 
 	local bmc = Instance.new("UICorner"); bmc.CornerRadius = UDim.new(0, 6); bmc.Parent = btnMin 
-	local bms = Instance.new("UIStroke"); bms.Color = Color3.fromRGB(60,60,60); bms.Parent = btnMin
 	
 	local btnLock = Instance.new("TextButton") btnLock.Size = UDim2.new(0, 26, 0, 26) btnLock.Position = UDim2.new(1, -38, 0, 7) btnLock.BackgroundColor3 = Color3.fromRGB(40, 40, 40) btnLock.Text = "🔓" btnLock.TextColor3 = ColorText btnLock.Font = Enum.Font.GothamBold btnLock.TextSize = 14 btnLock.Parent = title 
 	local blc = Instance.new("UICorner"); blc.CornerRadius = UDim.new(0, 6); blc.Parent = btnLock 
-	local bls = Instance.new("UIStroke"); bls.Color = Color3.fromRGB(60,60,60); bls.Parent = btnLock
 
 	-- Scroll Container
 	local content = Instance.new("ScrollingFrame") 
@@ -150,60 +226,40 @@ local function bui()
 	content.Parent = frame 
 	local layout = Instance.new("UIListLayout") layout.SortOrder = Enum.SortOrder.LayoutOrder layout.Padding = UDim.new(0, 8) layout.Parent = content 
 	
-	-- COMPONENTE: Toggle Monocromático
+	-- COMPONENTE: Toggle
 	local function mt(text, getter, setter) 
 		local row = Instance.new("Frame") row.Size = UDim2.new(1, 0, 0, 40) row.BackgroundColor3 = ColorPanel row.BorderSizePixel = 0 row.Parent = content 
 		local c = Instance.new("UICorner") c.CornerRadius = UDim.new(0, 8) c.Parent = row 
-		local s = Instance.new("UIStroke") s.Color = Color3.fromRGB(40,40,40) s.Parent = row
-		
 		local label = Instance.new("TextLabel") label.Size = UDim2.new(1, -70, 1, 0) label.Position = UDim2.new(0, 14, 0, 0) label.BackgroundTransparency = 1 label.Text = text label.TextColor3 = ColorText label.TextXAlignment = Enum.TextXAlignment.Left label.Font = Enum.Font.GothamMedium label.TextSize = 14 label.Parent = row 
-		
-		-- Botão estilo Pílula
 		local btn = Instance.new("TextButton") btn.Size = UDim2.new(0, 46, 0, 22) btn.Position = UDim2.new(1, -60, 0.5, -11) btn.BackgroundColor3 = getter() and ColorAccent or ColorToggleOff btn.BorderSizePixel = 0 btn.Text = "" btn.Parent = row 
 		local bc = Instance.new("UICorner") bc.CornerRadius = UDim.new(1, 0) bc.Parent = btn 
-		
-		-- Bolinha (Invertida dependendo do estado)
-		local dotColor = getter() and Color3.fromRGB(20,20,20) or Color3.fromRGB(150,150,150)
-		local dot = Instance.new("Frame") dot.Size = UDim2.new(0, 16, 0, 16) dot.Position = getter() and UDim2.new(1, -20, 0.5, -8) or UDim2.new(0, 4, 0.5, -8) dot.BackgroundColor3 = dotColor dot.Parent = btn 
+		local dot = Instance.new("Frame") dot.Size = UDim2.new(0, 16, 0, 16) dot.Position = getter() and UDim2.new(1, -20, 0.5, -8) or UDim2.new(0, 4, 0.5, -8) dot.BackgroundColor3 = getter() and Color3.fromRGB(20,20,20) or Color3.fromRGB(150,150,150) dot.Parent = btn 
 		local dc = Instance.new("UICorner") dc.CornerRadius = UDim.new(1, 0) dc.Parent = dot
-		
 		btn.MouseButton1Click:Connect(function() 
 			setter(not getter()) 
-			local targetColor = getter() and ColorAccent or ColorToggleOff
-			local targetPos = getter() and UDim2.new(1, -20, 0.5, -8) or UDim2.new(0, 4, 0.5, -8)
-			local targetDotColor = getter() and Color3.fromRGB(20,20,20) or Color3.fromRGB(150,150,150)
-			
-			TweenService:Create(btn, TweenInfo.new(0.2), {BackgroundColor3 = targetColor}):Play()
-			TweenService:Create(dot, TweenInfo.new(0.2), {BackgroundColor3 = targetDotColor}):Play()
-			TweenService:Create(dot, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Position = targetPos}):Play()
+			TweenService:Create(btn, TweenInfo.new(0.2), {BackgroundColor3 = getter() and ColorAccent or ColorToggleOff}):Play()
+			TweenService:Create(dot, TweenInfo.new(0.2), {BackgroundColor3 = getter() and Color3.fromRGB(20,20,20) or Color3.fromRGB(150,150,150)}):Play()
+			TweenService:Create(dot, TweenInfo.new(0.2), {Position = getter() and UDim2.new(1, -20, 0.5, -8) or UDim2.new(0, 4, 0.5, -8)}):Play()
 			SaveConfig() 
 		end) 
 	end 
 	
-	-- COMPONENTE: Input Monocromático
+	-- COMPONENTE: Input
 	local function mi(text, default, getter, setter) 
 		local row = Instance.new("Frame") row.Size = UDim2.new(1, 0, 0, 40) row.BackgroundColor3 = ColorPanel row.BorderSizePixel = 0 row.Parent = content 
 		local c = Instance.new("UICorner") c.CornerRadius = UDim.new(0, 8) c.Parent = row 
-		local s = Instance.new("UIStroke") s.Color = Color3.fromRGB(40,40,40) s.Parent = row
-		
 		local label = Instance.new("TextLabel") label.Size = UDim2.new(0.6, -10, 1, 0) label.Position = UDim2.new(0, 14, 0, 0) label.BackgroundTransparency = 1 label.Text = text label.TextColor3 = ColorText label.TextXAlignment = Enum.TextXAlignment.Left label.Font = Enum.Font.GothamMedium label.TextSize = 14 label.Parent = row 
-		
 		local box = Instance.new("TextBox") box.Size = UDim2.new(0.35, 0, 0, 26) box.Position = UDim2.new(0.65, -10, 0.5, -13) box.BackgroundColor3 = Color3.fromRGB(35, 35, 35) box.TextColor3 = ColorText box.Font = Enum.Font.GothamBold box.TextSize = 14 box.Text = tostring(default) box.Parent = row 
 		local bc = Instance.new("UICorner") bc.CornerRadius = UDim.new(0, 6) bc.Parent = box 
 		local bs = Instance.new("UIStroke") bs.Color = Color3.fromRGB(60, 60, 60) bs.Parent = box
-		
 		box.Focused:Connect(function() TweenService:Create(bs, TweenInfo.new(0.2), {Color = ColorText}):Play() end)
 		box.FocusLost:Connect(function() 
 			TweenService:Create(bs, TweenInfo.new(0.2), {Color = Color3.fromRGB(60, 60, 60)}):Play()
 			local val = tonumber(box.Text) 
-			if val then 
-				if text == "Aura Interval" then val = math.clamp(val, 0.1, 25) else val = math.floor(val) val = math.clamp(val, 1, 25) end 
-				setter(val) box.Text = tostring(val) SaveConfig() 
-			else box.Text = tostring(getter()) end 
+			if val then if text == "Aura Interval" then val = math.clamp(val, 0.1, 25) else val = math.floor(val) val = math.clamp(val, 1, 25) end setter(val) box.Text = tostring(val) SaveConfig() else box.Text = tostring(getter()) end 
 		end) 
 	end 
 	
-	-- Criação dos Itens
 	mt("Punch Bypass", function() return Config.PunchBypass.enabled end, function(v) Config.PunchBypass.enabled = v end) 
 	mi("Punch Range", Config.PunchBypass.range, function() return Config.PunchBypass.range end, function(v) Config.PunchBypass.range = v end) 
 	mt("Mini Aura", function() return Config.MiniAura.enabled end, function(v) Config.MiniAura.enabled = v if v then sa() end end) 
@@ -213,7 +269,7 @@ local function bui()
 	local secFriend = Instance.new("TextLabel") secFriend.Size = UDim2.new(1, 0, 0, 20) secFriend.BackgroundTransparency = 1 secFriend.Text = "PROTEÇÃO DE AMIGOS" secFriend.TextColor3 = ColorTextDim secFriend.Font = Enum.Font.GothamBold secFriend.TextSize = 11 secFriend.TextXAlignment = Enum.TextXAlignment.Left secFriend.Parent = content
 	mt("Proteger Amigos", function() return Config.FriendProtection end, function(v) Config.FriendProtection = v if FriendListFrameRefs.updateUI then FriendListFrameRefs.updateUI() end end) 
 	
-	local friendListFrame = Instance.new("ScrollingFrame") friendListFrame.Size = UDim2.new(1, 0, 0, 110) friendListFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20) friendListFrame.BorderSizePixel = 0 friendListFrame.ScrollBarThickness = 3 friendListFrame.ScrollBarImageColor3 = ColorTextDim friendListFrame.Parent = content 
+	local friendListFrame = Instance.new("ScrollingFrame") friendListFrame.Size = UDim2.new(1, 0, 0, 100) friendListFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20) friendListFrame.BorderSizePixel = 0 friendListFrame.ScrollBarThickness = 3 friendListFrame.ScrollBarImageColor3 = ColorTextDim friendListFrame.Parent = content 
 	local flCorner = Instance.new("UICorner") flCorner.CornerRadius = UDim.new(0, 8) flCorner.Parent = friendListFrame 
 	local flLayout = Instance.new("UIListLayout") flLayout.SortOrder = Enum.SortOrder.LayoutOrder flLayout.Padding = UDim.new(0, 4) flLayout.Parent = friendListFrame 
 
@@ -224,8 +280,6 @@ local function bui()
 			if plr ~= LP and isFriend(plr) then
 				count = count + 1
 				local nameLbl = Instance.new("TextLabel") nameLbl.Size = UDim2.new(1, -20, 0, 24) nameLbl.BackgroundTransparency = 1 nameLbl.Text = "👤 " .. plr.Name nameLbl.TextXAlignment = Enum.TextXAlignment.Left nameLbl.Font = Enum.Font.GothamMedium nameLbl.TextSize = 13 nameLbl.Parent = friendListFrame
-				
-				-- Protegido (Cinza Escuro/Inativo) / Desprotegido (Branco Ativo)
 				if Config.FriendProtection then nameLbl.TextColor3 = Color3.fromRGB(100, 100, 100) else nameLbl.TextColor3 = ColorText end
 			end
 		end
@@ -245,38 +299,97 @@ local function bui()
 
 	updateFriendsCache()
 	
-	-- Travar e Minimizar
+	-- Funções TopBar
 	btnLock.MouseButton1Click:Connect(function() State.isLocked = not State.isLocked if State.isLocked then btnLock.Text = "🔒" btnLock.TextColor3 = Color3.fromRGB(200, 200, 200) else btnLock.Text = "🔓" btnLock.TextColor3 = ColorText end end)
 	
 	local originalSize = frame.Size
 	btnMin.MouseButton1Click:Connect(function() 
 		if State.isAnimating then return end State.isAnimating = true State.isMinimized = not State.isMinimized 
 		if State.isMinimized then 
-			local t = TweenService:Create(frame, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Size = UDim2.new(0, 320, 0, 40)})
+			local t = TweenService:Create(frame, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Size = UDim2.new(0, 300, 0, 40)})
 			t:Play() t.Completed:Wait() content.Visible = false btnMin.Text = "+" 
 		else 
 			content.Visible = true 
 			local t = TweenService:Create(frame, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Size = originalSize})
 			t:Play() t.Completed:Wait() btnMin.Text = "–" 
-		end State.isAnimating = false
+		end 
+		State.isAnimating = false
 	end)
 
-	-- Arrasto
-	local function startDrag(input) if State.isLocked then return end if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then State.dragging = true State.dragStart = input.Position State.dragOrigin = frame.Position end end 
-	title.InputBegan:Connect(startDrag) frame.InputBegan:Connect(startDrag)
+	-- [SISTEMA DE ARRASTO INFALÍVEL]
+	local dragging = false
+	local dragStart = nil
+	local startPos = nil
 	
-	UIS.InputChanged:Connect(function(input) if not State.dragging then return end if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then local delta = input.Position - State.dragStart frame.Position = UDim2.new(State.dragOrigin.X.Scale, State.dragOrigin.X.Offset + delta.X, State.dragOrigin.Y.Scale, State.dragOrigin.Y.Offset + delta.Y) end end) 
-	UIS.InputEnded:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then State.dragging = false end end) 
+	local function startDrag(input)
+		if State.isLocked then return end 
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then 
+			dragging = true 
+			dragStart = input.Position 
+			startPos = frame.AbsolutePosition -- Pega a posição exata (ignorando Scale/Offset)
+		end 
+	end
+	
+	title.InputBegan:Connect(startDrag) 
+	frame.InputBegan:Connect(startDrag)
+	
+	UIS.InputChanged:Connect(function(input) 
+		if not dragging then return end 
+		if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then 
+			local delta = input.Position - dragStart 
+			
+			local newX = startPos.X + delta.X
+			local newY = startPos.Y + delta.Y
+			
+			local vp = workspace.CurrentCamera.ViewportSize
+			local absSize = frame.AbsoluteSize
+			
+			-- [TRAVA DE BORDA PERFEITA]
+			local maxX = math.max(0, vp.X - absSize.X)
+			local maxY = math.max(0, vp.Y - absSize.Y)
+			
+			local clampedX = math.clamp(newX, 0, maxX)
+			local clampedY = math.clamp(newY, 0, maxY)
+			
+			-- Aplica a nova posição usando Offset puro
+			frame.Position = UDim2.new(0, clampedX, 0, clampedY) 
+		end 
+	end) 
+	
+	UIS.InputEnded:Connect(function(input) 
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then 
+			dragging = false 
+		end 
+	end) 
 	
 	return sg, frame 
 end 
 
+-- ==========================================
+-- INICIALIZAÇÃO E ATALHOS
+-- ==========================================
 bui() 
 
 UIS.InputBegan:Connect(function(input, gpe) 
 	if gpe then return end 
-	if input.KeyCode == Enum.KeyCode.H then State.visible = not State.visible if State.gui and State.gui:FindFirstChild("Main") then State.gui.Main.Visible = State.visible end return end 
-	if input.UserInputType == Enum.UserInputType.MouseButton1 then if not Config.PunchBypass.enabled then return end task.spawn(function() pcall(pb) end) end 
+	
+	-- Atalho para esconder/mostrar (H)
+	if input.KeyCode == Enum.KeyCode.H then 
+		State.visible = not State.visible 
+		if State.gui and State.gui:FindFirstChild("Main") then 
+			State.gui.Main.Visible = State.visible 
+		end 
+		return 
+	end 
+	
+	-- Aciona o Punch Bypass com clique esquerdo se estiver ativado
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then 
+		if not Config.PunchBypass.enabled then return end 
+		task.spawn(function() pcall(pb) end) 
+	end 
 end) 
 
-LP.CharacterAdded:Connect(function() task.wait(0.5) State.lastBypass = 0 end)
+LP.CharacterAdded:Connect(function() 
+	task.wait(0.5) 
+	State.lastBypass = 0 
+end)
