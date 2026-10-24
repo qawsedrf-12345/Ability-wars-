@@ -93,11 +93,11 @@ local function bui()
 	State.gui = sg 
 	
 	-- Cores Estritas (Preto, Branco e Cinza)
-	local ColorBackground = Color3.fromRGB(10, 10, 10) 
-	local ColorPanel = Color3.fromRGB(25, 25, 25) 
-	local ColorText = Color3.fromRGB(245, 245, 245) 
-	local ColorTextDim = Color3.fromRGB(130, 130, 130) 
-	local ColorAccent = Color3.fromRGB(200, 200, 200) 
+	local ColorBackground = Color3.fromRGB(10, 10, 10) -- Quase preto
+	local ColorPanel = Color3.fromRGB(25, 25, 25) -- Cinza muito escuro
+	local ColorText = Color3.fromRGB(245, 245, 245) -- Branco acinzentado
+	local ColorTextDim = Color3.fromRGB(130, 130, 130) -- Cinza médio
+	local ColorAccent = Color3.fromRGB(200, 200, 200) -- Cinza claro (para destaques)
 	local ColorToggleOff = Color3.fromRGB(40, 40, 40)
 	
 	local frame = Instance.new("Frame") 
@@ -112,27 +112,8 @@ local function bui()
 	frame.Parent = sg 
 	
 	local scale = Instance.new("UIScale") scale.Parent = frame 
-	
-	-- Função para garantir que o menu fique na tela
-	local function clampToScreen()
-		local vp = workspace.CurrentCamera.ViewportSize
-		local fSize = frame.AbsoluteSize
-		local pos = frame.AbsolutePosition
-		
-		local clampedX = math.clamp(pos.X, 0, vp.X - fSize.X)
-		local clampedY = math.clamp(pos.Y, 0, vp.Y - fSize.Y)
-		
-		frame.Position = UDim2.fromOffset(clampedX, clampedY)
-	end
-
-	local function us() 
-		local vp = workspace.CurrentCamera.ViewportSize 
-		local s = math.clamp(vp.X / 1920, 0.75, 1.2) 
-		scale.Scale = s 
-		clampToScreen()
-	end 
-	us() 
-	workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(us) 
+	local function us() local vp = workspace.CurrentCamera.ViewportSize local s = math.clamp(vp.X / 1920, 0.75, 1.2) scale.Scale = s end 
+	us() workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(us) 
 	
 	-- Animação de Entrada
 	scale.Scale = 0
@@ -177,9 +158,11 @@ local function bui()
 		
 		local label = Instance.new("TextLabel") label.Size = UDim2.new(1, -70, 1, 0) label.Position = UDim2.new(0, 14, 0, 0) label.BackgroundTransparency = 1 label.Text = text label.TextColor3 = ColorText label.TextXAlignment = Enum.TextXAlignment.Left label.Font = Enum.Font.GothamMedium label.TextSize = 14 label.Parent = row 
 		
+		-- Botão estilo Pílula
 		local btn = Instance.new("TextButton") btn.Size = UDim2.new(0, 46, 0, 22) btn.Position = UDim2.new(1, -60, 0.5, -11) btn.BackgroundColor3 = getter() and ColorAccent or ColorToggleOff btn.BorderSizePixel = 0 btn.Text = "" btn.Parent = row 
 		local bc = Instance.new("UICorner") bc.CornerRadius = UDim.new(1, 0) bc.Parent = btn 
 		
+		-- Bolinha (Invertida dependendo do estado)
 		local dotColor = getter() and Color3.fromRGB(20,20,20) or Color3.fromRGB(150,150,150)
 		local dot = Instance.new("Frame") dot.Size = UDim2.new(0, 16, 0, 16) dot.Position = getter() and UDim2.new(1, -20, 0.5, -8) or UDim2.new(0, 4, 0.5, -8) dot.BackgroundColor3 = dotColor dot.Parent = btn 
 		local dc = Instance.new("UICorner") dc.CornerRadius = UDim.new(1, 0) dc.Parent = dot
@@ -242,6 +225,7 @@ local function bui()
 				count = count + 1
 				local nameLbl = Instance.new("TextLabel") nameLbl.Size = UDim2.new(1, -20, 0, 24) nameLbl.BackgroundTransparency = 1 nameLbl.Text = "👤 " .. plr.Name nameLbl.TextXAlignment = Enum.TextXAlignment.Left nameLbl.Font = Enum.Font.GothamMedium nameLbl.TextSize = 13 nameLbl.Parent = friendListFrame
 				
+				-- Protegido (Cinza Escuro/Inativo) / Desprotegido (Branco Ativo)
 				if Config.FriendProtection then nameLbl.TextColor3 = Color3.fromRGB(100, 100, 100) else nameLbl.TextColor3 = ColorText end
 			end
 		end
@@ -274,51 +258,15 @@ local function bui()
 			content.Visible = true 
 			local t = TweenService:Create(frame, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Size = originalSize})
 			t:Play() t.Completed:Wait() btnMin.Text = "–" 
-		end 
-		State.isAnimating = false
-		-- Garante que o menu não saia da tela após mudar de tamanho
-		clampToScreen()
+		end State.isAnimating = false
 	end)
 
 	-- Arrasto
-	local function startDrag(input) 
-		if State.isLocked then return end 
-		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then 
-			State.dragging = true 
-			State.dragStart = input.Position 
-			State.dragOrigin = frame.AbsolutePosition -- Salva a posição absoluta
-		end 
-	end 
+	local function startDrag(input) if State.isLocked then return end if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then State.dragging = true State.dragStart = input.Position State.dragOrigin = frame.Position end end 
+	title.InputBegan:Connect(startDrag) frame.InputBegan:Connect(startDrag)
 	
-	title.InputBegan:Connect(startDrag) 
-	frame.InputBegan:Connect(startDrag)
-	
-	UIS.InputChanged:Connect(function(input) 
-		if not State.dragging then return end 
-		if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then 
-			local delta = input.Position - State.dragStart 
-			
-			-- Calcula a nova posição
-			local newAbsX = State.dragOrigin.X + delta.X
-			local newAbsY = State.dragOrigin.Y + delta.Y
-			
-			-- Pega o tamanho da tela e do menu
-			local vp = workspace.CurrentCamera.ViewportSize
-			local fSize = frame.AbsoluteSize
-			
-			-- Trava para o menu não sair da tela (0 até o limite máximo)
-			local clampedX = math.clamp(newAbsX, 0, vp.X - fSize.X)
-			local clampedY = math.clamp(newAbsY, 0, vp.Y - fSize.Y)
-			
-			frame.Position = UDim2.fromOffset(clampedX, clampedY) 
-		end 
-	end) 
-	
-	UIS.InputEnded:Connect(function(input) 
-		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then 
-			State.dragging = false 
-		end 
-	end) 
+	UIS.InputChanged:Connect(function(input) if not State.dragging then return end if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then local delta = input.Position - State.dragStart frame.Position = UDim2.new(State.dragOrigin.X.Scale, State.dragOrigin.X.Offset + delta.X, State.dragOrigin.Y.Scale, State.dragOrigin.Y.Offset + delta.Y) end end) 
+	UIS.InputEnded:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then State.dragging = false end end) 
 	
 	return sg, frame 
 end 
