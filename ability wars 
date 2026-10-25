@@ -16,9 +16,11 @@ local CONFIG_FILE = "AbilityWars_Config.json"
 
 local Config = { 
 	PunchBypass = { enabled = false, abilityId = 81285671124281, range = 15 }, 
-	MiniAura = { enabled = false, range = 10, interval = 0.4, abilityId = 81285671124281 }, 
-	FriendProtection = true 
+	MiniAura = { enabled = false, range = 10, interval = 0.4, abilityId = 81285671124281 }
 } 
+
+-- Nova Tabela de Proteção
+local ProtectedPlayers = {}
 
 -- ==========================================
 -- SISTEMA DE SALVAMENTO (AUTO-SAVE)
@@ -56,29 +58,6 @@ local State = {
 	isAnimating = false 
 } 
 
-local FriendsCache = {}
-local FriendListFrameRefs = {} 
-
--- ==========================================
--- SISTEMA DE AMIGOS
--- ==========================================
-local function updateFriendsCache()
-	local temp = {}
-	for _, p in ipairs(Players:GetPlayers()) do 
-		if p ~= LP then 
-			pcall(function() 
-				if LP:IsFriendsWith(p.UserId) then temp[p.UserId] = true end 
-			end) 
-		end 
-	end
-	FriendsCache = temp
-	if FriendListFrameRefs.updateUI then FriendListFrameRefs.updateUI() end
-end
-
-task.spawn(function() task.wait(1) updateFriendsCache() end)
-Players.PlayerAdded:Connect(function() task.wait(1) updateFriendsCache() end)
-Players.PlayerRemoving:Connect(function() task.wait(1) updateFriendsCache() end)
-
 -- ==========================================
 -- LÓGICA DE COMBATE
 -- ==========================================
@@ -86,13 +65,12 @@ local function gc() return LP.Character end
 local function gr() local c = gc() return c and c:FindFirstChild("HumanoidRootPart") end 
 local function al(m) if not m or not m.Parent then return false end local h = m:FindFirstChildOfClass("Humanoid") return h and h.Health > 0 end 
 local function fhp(target) if not target then return nil end for _, name in ipairs({"Head","UpperTorso","Torso","HumanoidRootPart","LeftHand","RightHand"}) do local p = target:FindFirstChild(name) if p and p:IsA("BasePart") then return p end end return target.PrimaryPart or target:FindFirstChildWhichIsA("BasePart") end 
-local function isFriend(plr) return FriendsCache[plr.UserId] ~= nil end
 
 local function collectTargets(range) 
 	local hrp = gr() if not hrp then return {} end 
 	local myPos = hrp.Position local list = {} 
 	for _, plr in ipairs(Players:GetPlayers()) do 
-		if plr ~= LP and al(plr.Character) and not (Config.FriendProtection and isFriend(plr)) then 
+		if plr ~= LP and al(plr.Character) and not ProtectedPlayers[plr.UserId] then 
 			local tHRP = plr.Character:FindFirstChild("HumanoidRootPart") 
 			if tHRP and (tHRP.Position - myPos).Magnitude <= range then 
 				table.insert(list, plr.Character) 
@@ -106,7 +84,7 @@ local function closestTarget(range)
 	local hrp = gr() if not hrp then return nil end 
 	local myPos = hrp.Position local best, bestDist = nil, range 
 	for _, plr in ipairs(Players:GetPlayers()) do 
-		if plr ~= LP and al(plr.Character) and not (Config.FriendProtection and isFriend(plr)) then 
+		if plr ~= LP and al(plr.Character) and not ProtectedPlayers[plr.UserId] then 
 			local tHRP = plr.Character:FindFirstChild("HumanoidRootPart") 
 			if tHRP then 
 				local d = (tHRP.Position - myPos).Magnitude 
@@ -219,7 +197,7 @@ local function bui()
 	local btnLock = Instance.new("TextButton") btnLock.Size = UDim2.new(0, 26, 0, 26) btnLock.Position = UDim2.new(1, -38, 0, 7) btnLock.BackgroundColor3 = Color3.fromRGB(40, 40, 40) btnLock.Text = "🔓" btnLock.TextColor3 = ColorText btnLock.Font = Enum.Font.GothamBold btnLock.TextSize = 14 btnLock.Parent = title 
 	local blc = Instance.new("UICorner"); blc.CornerRadius = UDim.new(0, 6); blc.Parent = btnLock 
 
-	-- Scroll Container
+	-- Scroll Container Principal
 	local content = Instance.new("ScrollingFrame") 
 	content.Size = UDim2.new(1, -20, 1, -50) content.Position = UDim2.new(0, 10, 0, 45) content.BackgroundTransparency = 1 
 	content.ScrollBarThickness = 3 content.ScrollBarImageColor3 = ColorTextDim
@@ -266,39 +244,124 @@ local function bui()
 	mi("Aura Range", Config.MiniAura.range, function() return Config.MiniAura.range end, function(v) Config.MiniAura.range = v end) 
 	mi("Aura Interval", Config.MiniAura.interval, function() return Config.MiniAura.interval end, function(v) Config.MiniAura.interval = v end) 
 	
-	local secFriend = Instance.new("TextLabel") secFriend.Size = UDim2.new(1, 0, 0, 20) secFriend.BackgroundTransparency = 1 secFriend.Text = "PROTEÇÃO DE AMIGOS" secFriend.TextColor3 = ColorTextDim secFriend.Font = Enum.Font.GothamBold secFriend.TextSize = 11 secFriend.TextXAlignment = Enum.TextXAlignment.Left secFriend.Parent = content
-	mt("Proteger Amigos", function() return Config.FriendProtection end, function(v) Config.FriendProtection = v if FriendListFrameRefs.updateUI then FriendListFrameRefs.updateUI() end end) 
+	-- ==========================================
+	-- NOVA LISTA DE JOGADORES (PROTEÇÃO) COM BOTÃO RECARREGAR
+	-- ==========================================
 	
-	local friendListFrame = Instance.new("ScrollingFrame") friendListFrame.Size = UDim2.new(1, 0, 0, 100) friendListFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20) friendListFrame.BorderSizePixel = 0 friendListFrame.ScrollBarThickness = 3 friendListFrame.ScrollBarImageColor3 = ColorTextDim friendListFrame.Parent = content 
-	local flCorner = Instance.new("UICorner") flCorner.CornerRadius = UDim.new(0, 8) flCorner.Parent = friendListFrame 
-	local flLayout = Instance.new("UIListLayout") flLayout.SortOrder = Enum.SortOrder.LayoutOrder flLayout.Padding = UDim.new(0, 4) flLayout.Parent = friendListFrame 
+	-- Frame para alinhar o texto e o botão lado a lado
+	local headerFrame = Instance.new("Frame")
+	headerFrame.Size = UDim2.new(1, 0, 0, 20)
+	headerFrame.BackgroundTransparency = 1
+	headerFrame.Parent = content
 
-	FriendListFrameRefs.updateUI = function()
-		for _, v in ipairs(friendListFrame:GetChildren()) do if v:IsA("TextLabel") then v:Destroy() end end
-		local count = 0
+	local secPlayers = Instance.new("TextLabel") 
+	secPlayers.Size = UDim2.new(1, -60, 1, 0) 
+	secPlayers.BackgroundTransparency = 1 
+	secPlayers.Text = "JOGADORES (PROTEÇÃO)" 
+	secPlayers.TextColor3 = ColorTextDim 
+	secPlayers.Font = Enum.Font.GothamBold 
+	secPlayers.TextSize = 11 
+	secPlayers.TextXAlignment = Enum.TextXAlignment.Left 
+	secPlayers.Parent = headerFrame
+
+	local btnReload = Instance.new("TextButton")
+	btnReload.Size = UDim2.new(0, 55, 1, 0)
+	btnReload.Position = UDim2.new(1, -55, 0, 0)
+	btnReload.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+	btnReload.BorderSizePixel = 0
+	btnReload.Text = "🔄 Recarregar"
+	btnReload.TextColor3 = ColorText
+	btnReload.Font = Enum.Font.GothamBold
+	btnReload.TextSize = 10
+	btnReload.Parent = headerFrame
+	local rc = Instance.new("UICorner"); rc.CornerRadius = UDim.new(0, 4); rc.Parent = btnReload
+
+	-- Scroll próprio para a lista de jogadores
+	local playerListFrame = Instance.new("ScrollingFrame") 
+	playerListFrame.Size = UDim2.new(1, 0, 0, 150) 
+	playerListFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20) 
+	playerListFrame.BorderSizePixel = 0 
+	playerListFrame.ScrollBarThickness = 3 
+	playerListFrame.ScrollBarImageColor3 = ColorTextDim 
+	playerListFrame.Parent = content 
+	
+	local flCorner = Instance.new("UICorner") flCorner.CornerRadius = UDim.new(0, 8) flCorner.Parent = playerListFrame 
+	local flLayout = Instance.new("UIListLayout") flLayout.SortOrder = Enum.SortOrder.LayoutOrder flLayout.Padding = UDim.new(0, 4) flLayout.Parent = playerListFrame 
+
+	local function updatePlayerList()
+		for _, v in ipairs(playerListFrame:GetChildren()) do 
+			if v:IsA("Frame") then v:Destroy() end 
+		end
+		
 		for _, plr in ipairs(Players:GetPlayers()) do
-			if plr ~= LP and isFriend(plr) then
-				count = count + 1
-				local nameLbl = Instance.new("TextLabel") nameLbl.Size = UDim2.new(1, -20, 0, 24) nameLbl.BackgroundTransparency = 1 nameLbl.Text = "👤 " .. plr.Name nameLbl.TextXAlignment = Enum.TextXAlignment.Left nameLbl.Font = Enum.Font.GothamMedium nameLbl.TextSize = 13 nameLbl.Parent = friendListFrame
-				if Config.FriendProtection then nameLbl.TextColor3 = Color3.fromRGB(100, 100, 100) else nameLbl.TextColor3 = ColorText end
+			if plr ~= LP then
+				local row = Instance.new("Frame")
+				row.Size = UDim2.new(1, -6, 0, 26)
+				row.BackgroundTransparency = 1
+				row.Parent = playerListFrame
+
+				local nameLbl = Instance.new("TextLabel")
+				nameLbl.Size = UDim2.new(0.6, 0, 1, 0)
+				nameLbl.Position = UDim2.new(0, 5, 0, 0)
+				nameLbl.BackgroundTransparency = 1
+				nameLbl.Text = plr.Name
+				nameLbl.TextXAlignment = Enum.TextXAlignment.Left
+				nameLbl.Font = Enum.Font.GothamMedium
+				nameLbl.TextSize = 13
+				
+				if ProtectedPlayers[plr.UserId] then
+					nameLbl.TextColor3 = Color3.fromRGB(40, 200, 40)
+				else
+					nameLbl.TextColor3 = ColorText
+				end
+				nameLbl.Parent = row
+
+				local btnGreen = Instance.new("TextButton")
+				btnGreen.Size = UDim2.new(0, 20, 0, 20)
+				btnGreen.Position = UDim2.new(1, -50, 0.5, -10)
+				btnGreen.BackgroundColor3 = Color3.fromRGB(40, 200, 40)
+				btnGreen.BorderSizePixel = 0
+				btnGreen.Text = ""
+				btnGreen.Parent = row
+				local bgc = Instance.new("UICorner"); bgc.CornerRadius = UDim.new(1,0); bgc.Parent = btnGreen
+
+				local btnRed = Instance.new("TextButton")
+				btnRed.Size = UDim2.new(0, 20, 0, 20)
+				btnRed.Position = UDim2.new(1, -25, 0.5, -10)
+				btnRed.BackgroundColor3 = Color3.fromRGB(200, 40, 40)
+				btnRed.BorderSizePixel = 0
+				btnRed.Text = ""
+				btnRed.Parent = row
+				local brc = Instance.new("UICorner"); brc.CornerRadius = UDim.new(1,0); brc.Parent = btnRed
+
+				btnGreen.MouseButton1Click:Connect(function()
+					ProtectedPlayers[plr.UserId] = true
+					nameLbl.TextColor3 = Color3.fromRGB(40, 200, 40)
+				end)
+
+				btnRed.MouseButton1Click:Connect(function()
+					ProtectedPlayers[plr.UserId] = nil
+					nameLbl.TextColor3 = Color3.fromRGB(200, 40, 40)
+				end)
 			end
 		end
-		if count == 0 then local emptyLbl = Instance.new("TextLabel") emptyLbl.Size = UDim2.new(1, 0, 0, 24) emptyLbl.BackgroundTransparency = 1 emptyLbl.Text = "Nenhum amigo no servidor" emptyLbl.TextColor3 = ColorTextDim emptyLbl.Font = Enum.Font.Gotham emptyLbl.TextSize = 12 emptyLbl.Parent = friendListFrame end
-		friendListFrame.CanvasSize = UDim2.new(0, 0, 0, flLayout.AbsoluteContentSize.Y + 10)
+		
+		playerListFrame.CanvasSize = UDim2.new(0, 0, 0, flLayout.AbsoluteContentSize.Y + 10)
 	end
 
-	local btnCheck = Instance.new("TextButton") btnCheck.Size = UDim2.new(1, 0, 0, 34) btnCheck.BackgroundColor3 = Color3.fromRGB(50, 50, 50) btnCheck.BorderSizePixel = 0 btnCheck.Text = "🔄 Verificar Amizades" btnCheck.TextColor3 = ColorText btnCheck.Font = Enum.Font.GothamBold btnCheck.TextSize = 14 btnCheck.Parent = content 
-	local bcc = Instance.new("UICorner"); bcc.CornerRadius = UDim.new(0, 8); bcc.Parent = btnCheck
-
-	btnCheck.MouseButton1Click:Connect(function()
-		btnCheck.Text = "Verificando..." btnCheck.TextColor3 = ColorTextDim
-		task.wait(0.5) updateFriendsCache()
-		btnCheck.Text = "✅ Verificado!" btnCheck.TextColor3 = ColorText
-		task.wait(1) btnCheck.Text = "🔄 Verificar Amizades"
+	updatePlayerList()
+	
+	-- Ação do botão de recarregar
+	btnReload.MouseButton1Click:Connect(function()
+		btnReload.Text = "Carregando..."
+		updatePlayerList()
+		task.wait(0.5)
+		btnReload.Text = "🔄 Recarregar"
 	end)
 
-	updateFriendsCache()
-	
+	Players.PlayerAdded:Connect(function() task.wait(1) updatePlayerList() end)
+	Players.PlayerRemoving:Connect(function() task.wait(1) updatePlayerList() end)
+
 	-- Funções TopBar
 	btnLock.MouseButton1Click:Connect(function() State.isLocked = not State.isLocked if State.isLocked then btnLock.Text = "🔒" btnLock.TextColor3 = Color3.fromRGB(200, 200, 200) else btnLock.Text = "🔓" btnLock.TextColor3 = ColorText end end)
 	
@@ -326,7 +389,7 @@ local function bui()
 		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then 
 			dragging = true 
 			dragStart = input.Position 
-			startPos = frame.AbsolutePosition -- Pega a posição exata (ignorando Scale/Offset)
+			startPos = frame.AbsolutePosition 
 		end 
 	end
 	
@@ -344,14 +407,12 @@ local function bui()
 			local vp = workspace.CurrentCamera.ViewportSize
 			local absSize = frame.AbsoluteSize
 			
-			-- [TRAVA DE BORDA PERFEITA]
 			local maxX = math.max(0, vp.X - absSize.X)
 			local maxY = math.max(0, vp.Y - absSize.Y)
 			
 			local clampedX = math.clamp(newX, 0, maxX)
 			local clampedY = math.clamp(newY, 0, maxY)
 			
-			-- Aplica a nova posição usando Offset puro
 			frame.Position = UDim2.new(0, clampedX, 0, clampedY) 
 		end 
 	end) 
@@ -373,7 +434,6 @@ bui()
 UIS.InputBegan:Connect(function(input, gpe) 
 	if gpe then return end 
 	
-	-- Atalho para esconder/mostrar (H)
 	if input.KeyCode == Enum.KeyCode.H then 
 		State.visible = not State.visible 
 		if State.gui and State.gui:FindFirstChild("Main") then 
@@ -382,7 +442,6 @@ UIS.InputBegan:Connect(function(input, gpe)
 		return 
 	end 
 	
-	-- Aciona o Punch Bypass com clique esquerdo se estiver ativado
 	if input.UserInputType == Enum.UserInputType.MouseButton1 then 
 		if not Config.PunchBypass.enabled then return end 
 		task.spawn(function() pcall(pb) end) 
