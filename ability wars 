@@ -1,322 +1,481 @@
 -- ==========================================
--- ABILITY WARS PREMIUM (WINDUI VERSION)
+-- ABILITY WARS PREMIUM (MONOCROMÁTICO REFINADO) - VERSÃO 3 SEM SOMBRA
 -- ==========================================
 
-local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
-local Players = game:GetService("Players")
-local RS = game:GetService("ReplicatedStorage")
-local LP = Players.LocalPlayer
+local Players = game:GetService("Players") 
+local RS = game:GetService("ReplicatedStorage") 
+local UIS = game:GetService("UserInputService") 
+local LP = Players.LocalPlayer 
 local HttpService = game:GetService("HttpService")
-local TweenService = game:GetService("TweenService")
+local TweenService = game:GetService("TweenService") 
 
-local Remotes = RS:WaitForChild("ReplicatedStorage Package"):WaitForChild("Remote Events")
-local SendPacket = Remotes.SendPacket
+local Remotes = RS:WaitForChild("ReplicatedStorage Package"):WaitForChild("Remote Events") 
+local SendPacket = Remotes.SendPacket 
 
 local CONFIG_FILE = "AbilityWars_Config.json"
 
-local Config = {
-    PunchBypass = { enabled = false, abilityId = 81285671124281, range = 15 },
-    MiniAura = { enabled = false, range = 10, interval = 0.4, abilityId = 81285671124281 }
-}
+local Config = { 
+	PunchBypass = { enabled = false, abilityId = 81285671124281, range = 15 }, 
+	MiniAura = { enabled = false, range = 10, interval = 0.4, abilityId = 81285671124281 }
+} 
 
 local ProtectedPlayers = {}
 
 -- ==========================================
--- SISTEMA DE SALVAMENTO
+-- SISTEMA DE SALVAMENTO (AUTO-SAVE)
 -- ==========================================
-local function SaveConfig()
-    if writefile then
-        pcall(function() writefile(CONFIG_FILE, HttpService:JSONEncode(Config)) end)
-    end
+local function SaveConfig() 
+	if writefile then 
+		pcall(function() writefile(CONFIG_FILE, HttpService:JSONEncode(Config)) end) 
+	end 
 end
 
-local function LoadConfig()
-    if isfile and isfile(CONFIG_FILE) then
-        local success, data = pcall(function() return HttpService:JSONDecode(readfile(CONFIG_FILE)) end)
-        if success and data then
-            for k, v in pairs(data) do
-                if type(v) == "table" and Config[k] then
-                    for k2, v2 in pairs(v) do Config[k][k2] = v2 end
-                else
-                    Config[k] = v
-                end
-            end
-        end
-    end
+local function LoadConfig() 
+	if isfile and isfile(CONFIG_FILE) then 
+		local success, data = pcall(function() return HttpService:JSONDecode(readfile(CONFIG_FILE)) end) 
+		if success and data then 
+			for k, v in pairs(data) do 
+				if type(v) == "table" and Config[k] then 
+					for k2, v2 in pairs(v) do Config[k][k2] = v2 end 
+				else 
+					Config[k] = v 
+				end 
+			end 
+		end 
+	end 
 end
 LoadConfig()
 
 -- ==========================================
+-- ESTADO GLOBAL
+-- ==========================================
+local State = { 
+	lastBypass = 0, auraThread = nil, 
+	dragging = false, dragStart = nil, 
+	visible = true, gui = nil, 
+	isLocked = false, isMinimized = false, 
+	isAnimating = false 
+} 
+
+-- ==========================================
 -- LÓGICA DE COMBATE
 -- ==========================================
-local State = { lastBypass = 0, auraThread = nil }
+local function gc() return LP.Character end 
+local function gr() local c = gc() return c and c:FindFirstChild("HumanoidRootPart") end 
+local function al(m) if not m or not m.Parent then return false end local h = m:FindFirstChildOfClass("Humanoid") return h and h.Health > 0 end 
+local function fhp(target) if not target then return nil end for _, name in ipairs({"Head","UpperTorso","Torso","HumanoidRootPart","LeftHand","RightHand"}) do local p = target:FindFirstChild(name) if p and p:IsA("BasePart") then return p end end return target.PrimaryPart or target:FindFirstChildWhichIsA("BasePart") end 
 
-local function gc() return LP.Character end
-local function gr() local c = gc() return c and c:FindFirstChild("HumanoidRootPart") end
-local function al(m) if not m or not m.Parent then return false end local h = m:FindFirstChildOfClass("Humanoid") return h and h.Health > 0 end
-local function fhp(target) if not target then return nil end for _, name in ipairs({"Head","UpperTorso","Torso","HumanoidRootPart","LeftHand","RightHand"}) do local p = target:FindFirstChild(name) if p and p:IsA("BasePart") then return p end end return target.PrimaryPart or target:FindFirstChildWhichIsA("BasePart") end
+local function collectTargets(range) 
+	local hrp = gr() if not hrp then return {} end 
+	local myPos = hrp.Position local list = {} 
+	for _, plr in ipairs(Players:GetPlayers()) do 
+		if plr ~= LP and al(plr.Character) and not ProtectedPlayers[plr.UserId] then 
+			local tHRP = plr.Character:FindFirstChild("HumanoidRootPart") 
+			if tHRP and (tHRP.Position - myPos).Magnitude <= range then 
+				table.insert(list, plr.Character) 
+			end 
+		end 
+	end 
+	return list 
+end 
 
-local function collectTargets(range)
-    local hrp = gr() if not hrp then return {} end
-    local myPos = hrp.Position local list = {}
-    for _, plr in ipairs(Players:GetPlayers()) do
-        if plr ~= LP and al(plr.Character) and not ProtectedPlayers[plr.UserId] then
-            local tHRP = plr.Character:FindFirstChild("HumanoidRootPart")
-            if tHRP and (tHRP.Position - myPos).Magnitude <= range then
-                table.insert(list, plr.Character)
-            end
-        end
-    end
-    return list
-end
+local function closestTarget(range) 
+	local hrp = gr() if not hrp then return nil end 
+	local myPos = hrp.Position local best, bestDist = nil, range 
+	for _, plr in ipairs(Players:GetPlayers()) do 
+		if plr ~= LP and al(plr.Character) and not ProtectedPlayers[plr.UserId] then 
+			local tHRP = plr.Character:FindFirstChild("HumanoidRootPart") 
+			if tHRP then 
+				local d = (tHRP.Position - myPos).Magnitude 
+				if d <= bestDist then bestDist = d best = plr.Character end 
+			end 
+		end 
+	end 
+	return best 
+end 
 
-local function closestTarget(range)
-    local hrp = gr() if not hrp then return nil end
-    local myPos = hrp.Position local best, bestDist = nil, range
-    for _, plr in ipairs(Players:GetPlayers()) do
-        if plr ~= LP and al(plr.Character) and not ProtectedPlayers[plr.UserId] then
-            local tHRP = plr.Character:FindFirstChild("HumanoidRootPart")
-            if tHRP then
-                local d = (tHRP.Position - myPos).Magnitude
-                if d <= bestDist then bestDist = d best = plr.Character end
-            end
-        end
-    end
-    return best
-end
+local function sp(target, abilityId) 
+	local char = gc() local hrp = gr() if not char or not hrp then return end 
+	local hitbox = char:FindFirstChild("Hitbox") local weld = hrp:FindFirstChild("Hitbox Weld") 
+	if not hitbox or not weld then return end 
+	local hitPart = fhp(target) if not hitPart then return end 
+	local camera = workspace.CurrentCamera local mousePos = camera.CFrame.Position + camera.CFrame.LookVector * 100 
+	SendPacket:FireServer("Use Ability", "Punch", char:GetPivot(), mousePos, nil) 
+	task.wait(0.05) 
+	pcall(function() 
+		SendPacket:FireServer("Use Punch", abilityId, target, hitbox.Position + Vector3.new(0, 0.5, 0), 2, hitbox.Size, weld.C0, hitPart, hitPart.Size, hrp.CFrame.LookVector) 
+	end) 
+end 
 
-local function sp(target, abilityId)
-    local char = gc() local hrp = gr() if not char or not hrp then return end
-    local hitbox = char:FindFirstChild("Hitbox") local weld = hrp:FindFirstChild("Hitbox Weld")
-    if not hitbox or not weld then return end
-    local hitPart = fhp(target) if not hitPart then return end
-    local camera = workspace.CurrentCamera local mousePos = camera.CFrame.Position + camera.CFrame.LookVector * 100
-    SendPacket:FireServer("Use Ability", "Punch", char:GetPivot(), mousePos, nil)
-    task.wait(0.05)
-    pcall(function()
-        SendPacket:FireServer("Use Punch", abilityId, target, hitbox.Position + Vector3.new(0, 0.5, 0), 2, hitbox.Size, weld.C0, hitPart, hitPart.Size, hrp.CFrame.LookVector)
-    end)
-end
+local function pb() 
+	local now = os.clock() if now - State.lastBypass < 0.3 then return end 
+	local target = closestTarget(Config.PunchBypass.range) if not target then return end 
+	State.lastBypass = now pcall(sp, target, Config.PunchBypass.abilityId) 
+end 
 
-local function pb()
-    local now = os.clock() if now - State.lastBypass < 0.3 then return end
-    local target = closestTarget(Config.PunchBypass.range) if not target then return end
-    State.lastBypass = now pcall(sp, target, Config.PunchBypass.abilityId)
-end
-
-local function sa()
-    if State.auraThread then return end State.auraThread = true
-    task.spawn(function()
-        while true do
-            if Config.MiniAura.enabled then
-                local targets = collectTargets(Config.MiniAura.range)
-                if #targets > 0 then
-                    local target = targets[math.random(#targets)]
-                    if target and target.Parent then pcall(sp, target, Config.MiniAura.abilityId) end
-                end
-                task.wait(Config.MiniAura.interval)
-            else
-                task.wait(0.2)
-            end
-        end
-    end)
-end
+local function sa() 
+	if State.auraThread then return end State.auraThread = true 
+	task.spawn(function() 
+		while true do 
+			if Config.MiniAura.enabled then 
+				local targets = collectTargets(Config.MiniAura.range) 
+				if #targets > 0 then 
+					local target = targets[math.random(#targets)] 
+					if target and target.Parent then pcall(sp, target, Config.MiniAura.abilityId) end 
+				end 
+				task.wait(Config.MiniAura.interval) 
+			else 
+				task.wait(0.2) 
+			end 
+		end 
+	end) 
+end 
 
 -- ==========================================
--- CONFIGURAÇÃO DA WINDUI
+-- INTERFACE GRÁFICA REFINADA (MONOCROMÁTICA)
 -- ==========================================
-WindUI:AddTheme({
-    Name = "Default",
-    Accent = Color3.fromHex("#18181b"),
-    Background = Color3.fromHex("#878787"),
-    Outline = Color3.fromHex("#1f1f1f"),
-    Text = Color3.fromHex("#FFFFFF"),
-    Placeholder = Color3.fromHex("#7a7a7a"),
-    Button = Color3.fromHex("#5c584e"),
-    Icon = Color3.fromHex("#FFFFFF"),
-})
+local function bui() 
+	local pg = LP:WaitForChild("PlayerGui") 
+	local old = pg:FindFirstChild("AbilityWarsUI") if old then old:Destroy() end 
+	
+	local sg = Instance.new("ScreenGui") 
+	sg.Name = "AbilityWarsUI" sg.ResetOnSpawn = false sg.IgnoreGuiInset = true sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling sg.DisplayOrder = 100 sg.Parent = pg 
+	State.gui = sg 
+	
+	-- Paleta de Cores Otimizada (Mais Profunda)
+	local ColorBackground = Color3.fromRGB(16, 16, 16) 
+	local ColorPanel = Color3.fromRGB(26, 26, 26) 
+	local ColorText = Color3.fromRGB(240, 240, 240) 
+	local ColorTextDim = Color3.fromRGB(130, 130, 130) 
+	local ColorAccent = Color3.fromRGB(255, 255, 255) 
+	local ColorToggleOff = Color3.fromRGB(45, 45, 45)
+	
+	local frame = Instance.new("Frame") 
+	frame.Name = "Main" 
+	frame.Size = UDim2.new(0, 300, 0, 450) 
+	frame.AnchorPoint = Vector2.new(0, 0) 
+	frame.Position = UDim2.new(0.5, -150, 0.5, -225) 
+	frame.BackgroundColor3 = ColorBackground 
+	frame.BorderSizePixel = 0 
+	frame.Active = true 
+	frame.ClipsDescendants = false 
+	frame.Parent = sg 
+	
+	local scale = Instance.new("UIScale") scale.Parent = frame 
+	local function us() 
+		local vp = workspace.CurrentCamera.ViewportSize 
+		local s = math.clamp(vp.X / 1500, 0.7, 1.1) 
+		scale.Scale = s 
+	end 
+	us() 
+	workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(us) 
+	
+	-- Animação de Entrada
+	scale.Scale = 0
+	local entranceTween = TweenService:Create(scale, TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = us() or 1})
+	entranceTween:Play()
+	
+	local corner = Instance.new("UICorner") corner.CornerRadius = UDim.new(0, 14) corner.Parent = frame 
+	local stroke = Instance.new("UIStroke") stroke.Color = Color3.fromRGB(70, 70, 70) stroke.Thickness = 1.5 stroke.Transparency = 0.3 stroke.Parent = frame 
+	
+	-- TopBar com Gradiente
+	local title = Instance.new("TextLabel") 
+	title.Name = "Title" title.Size = UDim2.new(1, 0, 0, 45) title.BackgroundColor3 = ColorPanel title.BorderSizePixel = 0 
+	title.Text = "  🖤 Ability Wars" 
+	title.TextColor3 = ColorText title.TextXAlignment = Enum.TextXAlignment.Left title.Font = Enum.Font.GothamBold title.TextSize = 16 title.Parent = frame 
+	
+	local titleGradient = Instance.new("UIGradient")
+	titleGradient.Color = ColorSequence.new(Color3.fromRGB(40, 40, 40), Color3.fromRGB(20, 20, 20))
+	titleGradient.Rotation = 90
+	titleGradient.Parent = title
+	
+	local tc = Instance.new("UICorner") tc.CornerRadius = UDim.new(0, 14) tc.Parent = title 
+	local tBarFix = Instance.new("Frame") tBarFix.Size = UDim2.new(1, 0, 0, 15) tBarFix.Position = UDim2.new(0, 0, 1, -15) tBarFix.BackgroundColor3 = Color3.fromRGB(20, 20, 20) tBarFix.BorderSizePixel = 0 tBarFix.Parent = title
+	
+	local line = Instance.new("Frame") 
+	line.Size = UDim2.new(1, 0, 0, 1) line.Position = UDim2.new(0, 0, 1, -1) line.BackgroundColor3 = Color3.fromRGB(80, 80, 80) line.BorderSizePixel = 0 line.Parent = title
+	
+	-- Botões TopBar Refinados
+	local btnMin = Instance.new("TextButton") btnMin.Size = UDim2.new(0, 26, 0, 26) btnMin.Position = UDim2.new(1, -70, 0, 9) btnMin.BackgroundColor3 = Color3.fromRGB(45, 45, 45) btnMin.Text = "–" btnMin.TextColor3 = ColorText btnMin.Font = Enum.Font.GothamBold btnMin.TextSize = 18 btnMin.Parent = title 
+	local bmc = Instance.new("UICorner"); bmc.CornerRadius = UDim.new(0, 6); bmc.Parent = btnMin 
+	
+	local btnLock = Instance.new("TextButton") btnLock.Size = UDim2.new(0, 26, 0, 26) btnLock.Position = UDim2.new(1, -38, 0, 9) btnLock.BackgroundColor3 = Color3.fromRGB(45, 45, 45) btnLock.Text = "🔓" btnLock.TextColor3 = ColorText btnLock.Font = Enum.Font.GothamBold btnLock.TextSize = 14 btnLock.Parent = title 
+	local blc = Instance.new("UICorner"); blc.CornerRadius = UDim.new(0, 6); blc.Parent = btnLock 
 
-local Window = WindUI:CreateWindow({
-    Title = "Ability Wars Premium",
-    Icon = "swords",
-    Author = "Premium Hub",
-    Folder = "AbilityWars_Config",
-    Size = UDim2.fromOffset(600, 400),
-    Transparent = false,
-    Theme = "Dark",
-    Resizable = true,
-    SideBarWidth = 180,
-    BackgroundImageTransparency = 0.12,
-    HideSearchBar = true,
-    ScrollBarEnabled = true,
-})
+	-- Scroll Container Principal
+	local content = Instance.new("ScrollingFrame") 
+	content.Size = UDim2.new(1, -20, 1, -55) content.Position = UDim2.new(0, 10, 0, 50) content.BackgroundTransparency = 1 
+	content.ScrollBarThickness = 3 content.ScrollBarImageColor3 = Color3.fromRGB(100,100,100)
+	content.Parent = frame 
+	local layout = Instance.new("UIListLayout") layout.SortOrder = Enum.SortOrder.LayoutOrder layout.Padding = UDim.new(0, 10) layout.Parent = content 
+	
+	-- COMPONENTE: Toggle
+	local function mt(text, getter, setter) 
+		local row = Instance.new("Frame") row.Size = UDim2.new(1, 0, 0, 42) row.BackgroundColor3 = ColorPanel row.BorderSizePixel = 0 row.Parent = content 
+		local c = Instance.new("UICorner") c.CornerRadius = UDim.new(0, 8) c.Parent = row 
+		local label = Instance.new("TextLabel") label.Size = UDim2.new(1, -70, 1, 0) label.Position = UDim2.new(0, 14, 0, 0) label.BackgroundTransparency = 1 label.Text = text label.TextColor3 = ColorText label.TextXAlignment = Enum.TextXAlignment.Left label.Font = Enum.Font.GothamMedium label.TextSize = 14 label.Parent = row 
+		
+		local btn = Instance.new("TextButton") btn.Size = UDim2.new(0, 46, 0, 22) btn.Position = UDim2.new(1, -60, 0.5, -11) btn.BackgroundColor3 = getter() and ColorAccent or ColorToggleOff btn.BorderSizePixel = 0 btn.Text = "" btn.Parent = row 
+		local bc = Instance.new("UICorner") bc.CornerRadius = UDim.new(1, 0) bc.Parent = btn 
+		
+		local dot = Instance.new("Frame") dot.Size = UDim2.new(0, 16, 0, 16) dot.Position = getter() and UDim2.new(1, -20, 0.5, -8) or UDim2.new(0, 4, 0.5, -8) dot.BackgroundColor3 = getter() and Color3.fromRGB(20,20,20) or Color3.fromRGB(160,160,160) dot.Parent = btn 
+		local dc = Instance.new("UICorner") dc.CornerRadius = UDim.new(1, 0) dc.Parent = dot
+		
+		btn.MouseButton1Click:Connect(function() 
+			setter(not getter()) 
+			TweenService:Create(btn, TweenInfo.new(0.2), {BackgroundColor3 = getter() and ColorAccent or ColorToggleOff}):Play()
+			TweenService:Create(dot, TweenInfo.new(0.2), {BackgroundColor3 = getter() and Color3.fromRGB(20,20,20) or Color3.fromRGB(160,160,160)}):Play()
+			TweenService:Create(dot, TweenInfo.new(0.2), {Position = getter() and UDim2.new(1, -20, 0.5, -8) or UDim2.new(0, 4, 0.5, -8)}):Play()
+			SaveConfig() 
+		end) 
+	end 
+	
+	-- COMPONENTE: Input
+	local function mi(text, default, getter, setter) 
+		local row = Instance.new("Frame") row.Size = UDim2.new(1, 0, 0, 42) row.BackgroundColor3 = ColorPanel row.BorderSizePixel = 0 row.Parent = content 
+		local c = Instance.new("UICorner") c.CornerRadius = UDim.new(0, 8) c.Parent = row 
+		local label = Instance.new("TextLabel") label.Size = UDim2.new(0.6, -10, 1, 0) label.Position = UDim2.new(0, 14, 0, 0) label.BackgroundTransparency = 1 label.Text = text label.TextColor3 = ColorText label.TextXAlignment = Enum.TextXAlignment.Left label.Font = Enum.Font.GothamMedium label.TextSize = 14 label.Parent = row 
+		
+		local box = Instance.new("TextBox") box.Size = UDim2.new(0.35, 0, 0, 26) box.Position = UDim2.new(0.65, -10, 0.5, -13) box.BackgroundColor3 = Color3.fromRGB(35, 35, 35) box.TextColor3 = ColorText box.Font = Enum.Font.GothamBold box.TextSize = 14 box.Text = tostring(default) box.Parent = row 
+		local bc = Instance.new("UICorner") bc.CornerRadius = UDim.new(0, 6) bc.Parent = box 
+		local bs = Instance.new("UIStroke") bs.Color = Color3.fromRGB(60, 60, 60) bs.Parent = box
+		
+		box.Focused:Connect(function() TweenService:Create(bs, TweenInfo.new(0.2), {Color = ColorAccent}):Play() end)
+		box.FocusLost:Connect(function() 
+			TweenService:Create(bs, TweenInfo.new(0.2), {Color = Color3.fromRGB(60, 60, 60)}):Play()
+			local val = tonumber(box.Text) 
+			if val then if text == "Aura Interval" then val = math.clamp(val, 0.1, 1) else val = math.floor(val) val = math.clamp(val, 1, 25) end setter(val) box.Text = tostring(val) SaveConfig() else box.Text = tostring(getter()) end 
+		end) 
+	end 
+	
+	mt("Punch Bypass", function() return Config.PunchBypass.enabled end, function(v) Config.PunchBypass.enabled = v end) 
+	mi("Punch Range", Config.PunchBypass.range, function() return Config.PunchBypass.range end, function(v) Config.PunchBypass.range = v end) 
+	mt("Mini Aura", function() return Config.MiniAura.enabled end, function(v) Config.MiniAura.enabled = v if v then sa() end end) 
+	mi("Aura Range", Config.MiniAura.range, function() return Config.MiniAura.range end, function(v) Config.MiniAura.range = v end) 
+	mi("Aura Interval", Config.MiniAura.interval, function() return Config.MiniAura.interval end, function(v) Config.MiniAura.interval = v end) 
+	
+	-- ==========================================
+	-- LISTA DE JOGADORES REFINADA
+	-- ==========================================
+	local headerFrame = Instance.new("Frame")
+	headerFrame.Size = UDim2.new(1, 0, 0, 20)
+	headerFrame.BackgroundTransparency = 1
+	headerFrame.Parent = content
 
-Window:EditOpenButton({
-    Title = "Ability Wars",
-    Icon = "swords",
-    CornerRadius = UDim.new(0, 16),
-    StrokeThickness = 1.4,
-    Color = ColorSequence.new(Color3.fromHex("#ffffff"), Color3.fromHex("#f0f0f0")),
-    OnlyMobile = false,
-    Enabled = true,
-    Draggable = true
-})
+	local secPlayers = Instance.new("TextLabel") 
+	secPlayers.Size = UDim2.new(1, -70, 1, 0) 
+	secPlayers.BackgroundTransparency = 1 
+	secPlayers.Text = "JOGADORES (PROTEÇÃO)" 
+	secPlayers.TextColor3 = ColorTextDim 
+	secPlayers.Font = Enum.Font.GothamBold 
+	secPlayers.TextSize = 11 
+	secPlayers.TextXAlignment = Enum.TextXAlignment.Left 
+	secPlayers.Parent = headerFrame
+
+	local btnReload = Instance.new("TextButton")
+	btnReload.Size = UDim2.new(0, 65, 1, 0)
+	btnReload.Position = UDim2.new(1, -65, 0, 0)
+	btnReload.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+	btnReload.BorderSizePixel = 0
+	btnReload.Text = "🔄 Recarregar"
+	btnReload.TextColor3 = ColorText
+	btnReload.Font = Enum.Font.GothamBold
+	btnReload.TextSize = 10
+	btnReload.Parent = headerFrame
+	local rc = Instance.new("UICorner"); rc.CornerRadius = UDim.new(0, 4); rc.Parent = btnReload
+	local rs = Instance.new("UIStroke"); rs.Color = Color3.fromRGB(70,70,70); rs.Parent = btnReload
+
+	local playerListFrame = Instance.new("ScrollingFrame") 
+	playerListFrame.Size = UDim2.new(1, 0, 0, 150) 
+	playerListFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20) 
+	playerListFrame.BorderSizePixel = 0 
+	playerListFrame.ScrollBarThickness = 3 
+	playerListFrame.ScrollBarImageColor3 = ColorTextDim 
+	playerListFrame.Parent = content 
+	
+	local flCorner = Instance.new("UICorner") flCorner.CornerRadius = UDim.new(0, 8) flCorner.Parent = playerListFrame 
+	local flLayout = Instance.new("UIListLayout") flLayout.SortOrder = Enum.SortOrder.LayoutOrder flLayout.Padding = UDim.new(0, 2) flLayout.Parent = playerListFrame 
+
+	local function updatePlayerList()
+		for _, v in ipairs(playerListFrame:GetChildren()) do 
+			if v:IsA("Frame") then v:Destroy() end 
+		end
+		
+		for _, plr in ipairs(Players:GetPlayers()) do
+			if plr ~= LP then
+				local row = Instance.new("Frame")
+				row.Size = UDim2.new(1, -6, 0, 30) 
+				row.BackgroundColor3 = Color3.fromRGB(28, 28, 28) 
+				row.BackgroundTransparency = 0.5
+				row.Parent = playerListFrame
+				local rowCorner = Instance.new("UICorner"); rowCorner.CornerRadius = UDim.new(0,6); rowCorner.Parent = row
+
+				local nameLbl = Instance.new("TextLabel")
+				nameLbl.Size = UDim2.new(0.7, 0, 1, 0)
+				nameLbl.Position = UDim2.new(0, 8, 0, 0)
+				nameLbl.BackgroundTransparency = 1
+				nameLbl.Text = plr.Name
+				nameLbl.TextXAlignment = Enum.TextXAlignment.Left
+				nameLbl.Font = Enum.Font.GothamMedium
+				nameLbl.TextSize = 13
+				
+				if ProtectedPlayers[plr.UserId] then
+					nameLbl.TextColor3 = Color3.fromRGB(120, 120, 120) 
+					row.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+				else
+					nameLbl.TextColor3 = ColorText
+					row.BackgroundColor3 = Color3.fromRGB(28, 28, 28)
+				end
+				nameLbl.Parent = row
+
+				local btnGreen = Instance.new("TextButton")
+				btnGreen.Size = UDim2.new(0, 22, 0, 22)
+				btnGreen.Position = UDim2.new(1, -52, 0.5, -11)
+				btnGreen.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+				btnGreen.BorderSizePixel = 0
+				btnGreen.Text = "✔"
+				btnGreen.TextColor3 = Color3.fromRGB(50, 220, 50)
+				btnGreen.Font = Enum.Font.GothamBold
+				btnGreen.TextSize = 14
+				btnGreen.Parent = row
+				local bgc = Instance.new("UICorner"); bgc.CornerRadius = UDim.new(0,6); bgc.Parent = btnGreen
+
+				local btnRed = Instance.new("TextButton")
+				btnRed.Size = UDim2.new(0, 22, 0, 22)
+				btnRed.Position = UDim2.new(1, -26, 0.5, -11)
+				btnRed.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+				btnRed.BorderSizePixel = 0
+				btnRed.Text = "✖"
+				btnRed.TextColor3 = Color3.fromRGB(220, 50, 50)
+				btnRed.Font = Enum.Font.GothamBold
+				btnRed.TextSize = 14
+				btnRed.Parent = row
+				local brc = Instance.new("UICorner"); brc.CornerRadius = UDim.new(0,6); brc.Parent = btnRed
+
+				btnGreen.MouseButton1Click:Connect(function()
+					ProtectedPlayers[plr.UserId] = true
+					nameLbl.TextColor3 = Color3.fromRGB(120, 120, 120)
+					row.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+				end)
+
+				btnRed.MouseButton1Click:Connect(function()
+					ProtectedPlayers[plr.UserId] = nil
+					nameLbl.TextColor3 = ColorText
+					row.BackgroundColor3 = Color3.fromRGB(28, 28, 28)
+				end)
+			end
+		end
+		
+		playerListFrame.CanvasSize = UDim2.new(0, 0, 0, flLayout.AbsoluteContentSize.Y + 10)
+	end
+
+	updatePlayerList()
+	
+	btnReload.MouseButton1Click:Connect(function()
+		btnReload.Text = "Carregando..."
+		updatePlayerList()
+		task.wait(0.5)
+		btnReload.Text = "🔄 Recarregar"
+	end)
+
+	Players.PlayerAdded:Connect(function() task.wait(1) updatePlayerList() end)
+	Players.PlayerRemoving:Connect(function() task.wait(1) updatePlayerList() end)
+
+	-- Funções TopBar (Com Hover Effects)
+	local function addHover(btn, hoverColor)
+		btn.MouseEnter:Connect(function() TweenService:Create(btn, TweenInfo.new(0.1), {BackgroundColor3 = hoverColor}):Play() end)
+		btn.MouseLeave:Connect(function() TweenService:Create(btn, TweenInfo.new(0.1), {BackgroundColor3 = Color3.fromRGB(45, 45, 45)}):Play() end)
+	end
+	addHover(btnMin, Color3.fromRGB(70, 70, 70))
+	addHover(btnLock, Color3.fromRGB(70, 70, 70))
+	addHover(btnReload, Color3.fromRGB(70, 70, 70))
+
+	btnLock.MouseButton1Click:Connect(function() State.isLocked = not State.isLocked if State.isLocked then btnLock.Text = "🔒" btnLock.TextColor3 = Color3.fromRGB(200, 200, 200) else btnLock.Text = "🔓" btnLock.TextColor3 = ColorText end end)
+	
+	local originalSize = frame.Size
+	btnMin.MouseButton1Click:Connect(function() 
+		if State.isAnimating then return end State.isAnimating = true State.isMinimized = not State.isMinimized 
+		if State.isMinimized then 
+			local t = TweenService:Create(frame, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Size = UDim2.new(0, 300, 0, 45)})
+			t:Play() t.Completed:Wait() content.Visible = false btnMin.Text = "+" 
+		else 
+			content.Visible = true 
+			local t = TweenService:Create(frame, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Size = originalSize})
+			t:Play() t.Completed:Wait() btnMin.Text = "–" 
+		end 
+		State.isAnimating = false
+	end)
+
+	-- [SISTEMA DE ARRASTO INFALÍVEL]
+	local dragging = false
+	local dragStart = nil
+	local startPos = nil
+	
+	local function startDrag(input)
+		if State.isLocked then return end 
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then 
+			dragging = true 
+			dragStart = input.Position 
+			startPos = frame.AbsolutePosition 
+		end 
+	end
+	
+	title.InputBegan:Connect(startDrag) 
+	frame.InputBegan:Connect(startDrag)
+	
+	UIS.InputChanged:Connect(function(input) 
+		if not dragging then return end 
+		if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then 
+			local delta = input.Position - dragStart 
+			
+			local newX = startPos.X + delta.X
+			local newY = startPos.Y + delta.Y
+			
+			local vp = workspace.CurrentCamera.ViewportSize
+			local absSize = frame.AbsoluteSize
+			
+			local maxX = math.max(0, vp.X - absSize.X)
+			local maxY = math.max(0, vp.Y - absSize.Y)
+			
+			local clampedX = math.clamp(newX, 0, maxX)
+			local clampedY = math.clamp(newY, 0, maxY)
+			
+			frame.Position = UDim2.new(0, clampedX, 0, clampedY) 
+		end 
+	end) 
+	
+	UIS.InputEnded:Connect(function(input) 
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then 
+			dragging = false 
+		end 
+	end) 
+	
+	return sg, frame 
+end 
 
 -- ==========================================
--- ABAS
+-- INICIALIZAÇÃO E ATALHOS
 -- ==========================================
-local TabCombat = Window:Tab({ Title = "Combate", Icon = "crosshair" })
-local TabProtection = Window:Tab({ Title = "Proteção", Icon = "shield" })
+bui() 
 
--- ==========================================
--- CONTEÚDO: COMBATE
--- ==========================================
-TabCombat:Section({ Title = "Punch Bypass" })
-TabCombat:Toggle({
-    Title = "Ativar Punch Bypass",
-    Default = Config.PunchBypass.enabled,
-    Callback = function(state)
-        Config.PunchBypass.enabled = state
-        SaveConfig()
-    end
-})
-TabCombat:Slider({
-    Title = "Punch Range",
-    Value = { Min = 1, Max = 25, Default = Config.PunchBypass.range },
-    Callback = function(v)
-        Config.PunchBypass.range = v
-        SaveConfig()
-    end
-})
+UIS.InputBegan:Connect(function(input, gpe) 
+	if gpe then return end 
+	
+	if input.KeyCode == Enum.KeyCode.H then 
+		State.visible = not State.visible 
+		if State.gui and State.gui:FindFirstChild("Main") then 
+			State.gui.Main.Visible = State.visible 
+		end 
+		return 
+	end 
+	
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then 
+		if not Config.PunchBypass.enabled then return end 
+		task.spawn(function() pcall(pb) end) 
+	end 
+end) 
 
-TabCombat:Divider()
-
-TabCombat:Section({ Title = "Mini Aura" })
-TabCombat:Toggle({
-    Title = "Ativar Mini Aura",
-    Default = Config.MiniAura.enabled,
-    Callback = function(state)
-        Config.MiniAura.enabled = state
-        if state then sa() end
-        SaveConfig()
-    end
-})
-TabCombat:Slider({
-    Title = "Aura Range",
-    Value = { Min = 1, Max = 25, Default = Config.MiniAura.range },
-    Callback = function(v)
-        Config.MiniAura.range = v
-        SaveConfig()
-    end
-})
-TabCombat:Slider({
-    Title = "Aura Interval",
-    Value = { Min = 0.1, Max = 1, Default = Config.MiniAura.interval },
-    Callback = function(v)
-        Config.MiniAura.interval = v
-        SaveConfig()
-    end
-})
-
--- ==========================================
--- CONTEÚDO: PROTEÇÃO (Lista de Jogadores)
--- ==========================================
-TabProtection:Section({ Title = "Jogadores no Servidor" })
-
-local function updatePlayerList()
-    for _, child in ipairs(TabProtection.Container:GetChildren()) do
-        if child:IsA("Frame") and child.Name == "CustomPlayerRow" then
-            child:Destroy()
-        end
-    end
-
-    for _, plr in ipairs(Players:GetPlayers()) do
-        if plr ~= LP then
-            local row = Instance.new("Frame")
-            row.Name = "CustomPlayerRow"
-            row.Size = UDim2.new(1, -20, 0, 35)
-            row.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-            row.BorderSizePixel = 0
-            row.Parent = TabProtection.Container
-            
-            local corner = Instance.new("UICorner")
-            corner.CornerRadius = UDim.new(0, 6)
-            corner.Parent = row
-
-            local nameLbl = Instance.new("TextLabel")
-            nameLbl.Size = UDim2.new(0.6, 0, 1, 0)
-            nameLbl.Position = UDim2.new(0, 10, 0, 0)
-            nameLbl.BackgroundTransparency = 1
-            nameLbl.Text = plr.Name
-            nameLbl.TextColor3 = ProtectedPlayers[plr.UserId] and Color3.fromRGB(50, 220, 50) or Color3.fromRGB(240, 240, 240)
-            nameLbl.TextXAlignment = Enum.TextXAlignment.Left
-            nameLbl.Font = Enum.Font.GothamMedium
-            nameLbl.TextSize = 14
-            nameLbl.Parent = row
-
-            local btnGreen = Instance.new("TextButton")
-            btnGreen.Size = UDim2.new(0, 24, 0, 24)
-            btnGreen.Position = UDim2.new(1, -60, 0.5, -12)
-            btnGreen.BackgroundColor3 = Color3.fromRGB(40, 200, 40)
-            btnGreen.Text = "✔"
-            btnGreen.TextColor3 = Color3.new(1,1,1)
-            btnGreen.Font = Enum.Font.GothamBold
-            btnGreen.Parent = row
-            Instance.new("UICorner", btnGreen).CornerRadius = UDim.new(0, 4)
-
-            local btnRed = Instance.new("TextButton")
-            btnRed.Size = UDim2.new(0, 24, 0, 24)
-            btnRed.Position = UDim2.new(1, -30, 0.5, -12)
-            btnRed.BackgroundColor3 = Color3.fromRGB(200, 40, 40)
-            btnRed.Text = "✖"
-            btnRed.TextColor3 = Color3.new(1,1,1)
-            btnRed.Font = Enum.Font.GothamBold
-            btnRed.Parent = row
-            Instance.new("UICorner", btnRed).CornerRadius = UDim.new(0, 4)
-
-            btnGreen.MouseButton1Click:Connect(function()
-                ProtectedPlayers[plr.UserId] = true
-                nameLbl.TextColor3 = Color3.fromRGB(50, 220, 50)
-            end)
-
-            btnRed.MouseButton1Click:Connect(function()
-                ProtectedPlayers[plr.UserId] = nil
-                nameLbl.TextColor3 = Color3.fromRGB(200, 40, 40)
-            end)
-        end
-    end
-end
-
-TabProtection:Button({
-    Title = "Recarregar Lista",
-    Desc = "Atualiza a lista de jogadores no servidor",
-    Callback = function()
-        updatePlayerList()
-        WindUI:Notify({ Title = "Lista Atualizada", Content = "Jogadores recarregados.", Duration = 3 })
-    end
-})
-
-updatePlayerList()
-
-Players.PlayerAdded:Connect(function() task.wait(1) updatePlayerList() end)
-Players.PlayerRemoving:Connect(function() task.wait(1) updatePlayerList() end)
-
-game:GetService("UserInputService").InputBegan:Connect(function(input, gpe)
-    if gpe then return end
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        if not Config.PunchBypass.enabled then return end
-        task.spawn(function() pcall(pb) end)
-    end
+LP.CharacterAdded:Connect(function() 
+	task.wait(0.5) 
+	State.lastBypass = 0 
 end)
-
-LP.CharacterAdded:Connect(function()
-    task.wait(0.5)
-    State.lastBypass = 0
-end)
-
-WindUI:Notify({
-    Title = "Ability Wars Carregado",
-    Content = "Use a interface para configurar suas habilidades.",
-    Duration = 5,
-    Icon = "check"
-})
